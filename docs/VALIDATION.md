@@ -13,6 +13,7 @@
 | .venv/Scripts/python.exe scripts/smoke_backend.py | 통과 | 실제 임시 로컬 Uvicorn HTTP의 health·기사·preview·선택, 동일 분석 ID/출처/is_demo |
 | node scripts/check-commit.mjs | 통과 | 커밋 후보의 제외 파일·고확률 키 패턴; 값은 출력하지 않음 |
 | git diff --check | 통과 | 변경 공백 오류 없음 |
+| 로컬 문서 링크 검사 | 통과 | README/개발 문서의 상대 링크 대상 존재 확인 |
 
 총 자동 테스트는 JavaScript 9 + Python 19 = **28개**이다. 브라우저·HTTP smoke는 별도 검사다.
 초기 보고의 24개는 당시 결과이며 안정화 회귀를 추가한 현재 수치로 대체한다.

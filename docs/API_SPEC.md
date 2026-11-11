@@ -126,7 +126,7 @@ caution.reasons는 공백이 아닌 문자열 한 개 이상이다.
 없는 claim/mention/source 참조는 결과 검증에서 거부한다.
 
 ## Preview 및 SelectionAnalysis
-Preview는 article_id, is_demo, summary, major_evidence[](최대 2), sources[](최대 2),
+Preview는 article_id, is_demo, summary, `major_evidence[]` (최대 2), `sources[]` (최대 2),
 headline_difference, one_line_caution, search_status를 포함한다.
 one_line_caution은 기사 caution의 첫 이유이며 전체 사유는 상세 분석에 존재한다.
 ```json
