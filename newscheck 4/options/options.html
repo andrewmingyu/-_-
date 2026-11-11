@@ -1,8 +1,57 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>뉴스체크 AI 설정</title>
-<link rel="stylesheet" href="../sidepanel/sidepanel.css"></head><body class="options">
-<h1>뉴스체크 AI 설정</h1><p>기사 본문과 선택 문장은 분석 서버로 전송됩니다. Gemini·Tavily 키는 서버 환경변수에만 설정합니다.</p>
-<label for="backendUrl">분석 서버 주소</label><input id="backendUrl" type="url" placeholder="http://127.0.0.1:8000">
-<button id="save" class="btn">저장</button><span id="saved" role="status" hidden></span>
-<p><a href="../sidepanel/sidepanel.html?demo" target="_blank" rel="noopener">시연용 예시 보기</a></p>
-<p>이전 버전의 브라우저 API 키는 더 이상 사용하지 않습니다.</p><button id="clear-legacy" class="btn">이전 API 키 설정 삭제</button>
-<script type="module" src="options.js"></script></body></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>뉴스체크 AI 설정</title>
+  <link rel="stylesheet" href="../sidepanel/sidepanel.css" />
+  <style>
+    body { max-width: 620px; margin: 0 auto; padding: 32px 20px; font-size: 14px; }
+    h1 { font-size: 20px; margin: 0 0 4px; display: flex; gap: 10px; align-items: center; }
+    .card { margin-top: 16px; }
+    label { display: block; font-weight: 600; margin: 12px 0 4px; }
+    input, select {
+      width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line);
+      background: var(--card); color: var(--text); font: inherit;
+    }
+    .help { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+    .actions { display: flex; gap: 8px; align-items: center; margin-top: 18px; }
+    #saved { color: var(--good); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1><img src="../icons/icon48.png" width="28" height="28" alt="" />뉴스체크 AI 설정</h1>
+  <p class="sub">키는 이 브라우저에만 저장되고, 분석 요청을 보낼 때만 사용돼요. 키가 없어도 자극 키워드·작성 스타일 분석은 동작해요.</p>
+
+  <div class="card">
+    <h2>AI 모델 <span class="right">기능 1·2·4에 사용</span></h2>
+    <label for="provider">제공자</label>
+    <select id="provider">
+      <option value="gemini">Google Gemini (무료 사용량 있음)</option>
+      <option value="openai">OpenAI</option>
+      <option value="anthropic">Anthropic Claude</option>
+    </select>
+    <label for="apiKey">API 키</label>
+    <input id="apiKey" type="password" autocomplete="off" />
+    <label for="model">모델 이름</label>
+    <input id="model" />
+    <p class="help">비워 두면 기본 모델을 써요. 모델이 없다는 오류가 나면 제공자 문서에서 최신 모델 이름으로 바꿔 주세요.</p>
+  </div>
+
+  <div class="card">
+    <h2>네이버 검색 API <span class="right">기능 2·4·5에 사용</span></h2>
+    <p class="help">기자의 최근 기사와 같은 사건을 다룬 다른 기사를 찾을 때 써요. 네이버 클라우드 플랫폼 콘솔 → Services → NAVER API HUB에서 Application을 만들고 '검색 - 뉴스'를 선택하면 발급돼요. (예전 개발자센터 키도 그대로 넣으면 동작해요.)</p>
+    <label for="naverId">Client ID</label>
+    <input id="naverId" autocomplete="off" />
+    <label for="naverSecret">Client Secret</label>
+    <input id="naverSecret" type="password" autocomplete="off" />
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" id="save">저장</button>
+    <a class="btn" href="../sidepanel/sidepanel.html?demo" target="_blank" style="text-decoration:none;color:inherit">데모 화면 보기</a>
+    <span id="saved" hidden>저장됨</span>
+  </div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>

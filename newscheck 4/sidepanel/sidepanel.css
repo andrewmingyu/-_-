@@ -233,29 +233,3 @@ main { padding-top: 10px; }
 .more-body h3 { font-size: 13px; margin: 16px 0 6px; }
 .more-body h3:first-child { margin-top: 12px; }
 .more-body .rows .k { width: 100px; }
-
-/* 출처 추적: 사실 여부를 나타내는 색상이나 점수는 사용하지 않는다. */
-.analysis-summary { background:#f0edff; border-radius:14px; padding:16px; }
-.analysis-summary h2 { margin:6px 0; font-size:14px; }
-.analysis-summary span { color:#5946a8; font-size:12px; }
-.section-heading { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; }
-.section-heading h2 { margin:0; font-size:15px; }
-.section-heading button { flex-shrink:0; border:1px solid var(--line); border-radius:8px; background:var(--card); padding:5px 8px; }
-.analysis-section { overflow-wrap:anywhere; }
-.analysis-section ul { padding-left:20px; margin:6px 0; }
-.analysis-section li { margin:5px 0; }
-.analysis-section dl { display:grid; grid-template-columns:100px minmax(0,1fr); gap:6px 12px; margin:8px 0; }
-.analysis-section dt { color:var(--sub); }.analysis-section dd { margin:0; }
-.source-row { padding:10px 0; border-top:1px solid var(--line); }
-.source-row strong { display:block; margin:4px 0; }
-.compact-summary { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; color:var(--sub); }
-.trace-badge { display:inline-block; color:var(--sub); background:var(--neutral-soft); border-radius:6px; padding:2px 7px; margin:3px 4px 3px 0; font-size:12px; }
-.trace-badge.caution { color:var(--warn); background:var(--warn-soft); }
-.trace-note { color:var(--sub); font-size:12px; margin-top:10px !important; }
-.demo-banner { background:var(--warn-soft); color:var(--warn); padding:12px; border-radius:10px; font-weight:600; }
-blockquote { margin:8px 0; border-left:3px solid var(--line); padding-left:10px; }
-button:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
-.options { max-width:650px; padding:24px; margin:auto; }
-.options input { width:100%; padding:10px; margin:8px 0 14px; }
-.options label { display:block; margin-top:16px; }
-@media(max-width:360px) { .analysis-section dl { grid-template-columns:85px minmax(0,1fr); } .section-heading { align-items:flex-start; } }
