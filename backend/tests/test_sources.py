@@ -13,7 +13,7 @@ from app.service import Analyzer, body_hash, combine_decisions, source_decision
 TEXT = '정책연구원은 「지원 검토 보고서」에서 제도 개편을 검토하고 있다고 밝혔다.'
 URL = 'https://news.example/article/1'
 SOURCE_URL = 'https://policy.example/report'
-RAW = '정책연구원 직접 발간 지원 검토 보고서. 조사기간 2026년. 전수조사. 공개 원문. 이해관계 없음. 독립 수집. 정책 전문기관. 직접 조사.'
+RAW = '정책연구원 직접 발간 지원 검토 보고서. 작성자 자료팀. 조사기간 2026년. 전수조사. 공개 원문. 이해관계 없음. 독립 수집. 정책 전문기관. 직접 조사.'
 
 
 class FakeLLM:
@@ -31,7 +31,7 @@ class FakeLLM:
                 evidence_mentions=[{'id':'m1','claim_ids':['c1'],'description':'보고서', 'article_quote':text,
                     'source_label':'정책연구원','document_title':'지원 검토 보고서','source_kind':'research'}])
         source_id = 'invented' if self.bad_id else payload['sources'][0]['id']
-        excerpts = {'identity':'정책연구원', 'originality':'직접 발간', 'expertise':'정책 전문기관',
+        excerpts = {'identity':'정책연구원', 'authorship':'작성자 자료팀', 'originality':'직접 발간', 'expertise':'정책 전문기관',
             'information_access':'직접 조사', 'date_context':'조사기간 2026년', 'public_access':'공개 원문',
             'methodology':'전수조사', 'interests':'이해관계 없음', 'independence':'독립 수집'}
         facts = {key:{'excerpt':'없는 원문' if self.bad_excerpt else value} for key,value in excerpts.items()}

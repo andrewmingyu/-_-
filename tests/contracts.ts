@@ -15,4 +15,5 @@ void [status,caution,oldStatus,oldCaution];
 // Pydantic accepts omitted metadata fields/defaults and explicit null.
 const minimal: AnalyzeRequest = { url: 'https://news.example/1', metadata: { url: 'https://news.example/1' } };
 const nullable: AnalyzeRequest = { url: 'https://news.example/1', metadata: null };
-void [minimal, nullable];
+const context: AnalyzeRequest = {url:'https://news.example/1',article_context:{cited_links:[{url:'https://source.example/1',text:'자료'}]}};
+void [minimal, nullable, context];

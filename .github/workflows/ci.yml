@@ -43,3 +43,5 @@ jobs:
         run: python scripts/smoke_backend.py
       - name: Chrome headless UI and events
         run: npm run test:browser
+      - name: Mock A B C D integrated flows
+        run: npm run test:integration

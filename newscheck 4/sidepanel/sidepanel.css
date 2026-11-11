@@ -249,6 +249,7 @@ main { padding-top: 10px; }
 .source-row { padding:10px 0; border-top:1px solid var(--line); }
 .source-row strong { display:block; margin:4px 0; }
 .compact-summary { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; color:var(--sub); }
+.section-state { font-size:12px; color:var(--sub); margin:0 0 8px !important; }
 .trace-badge { display:inline-block; color:var(--sub); background:var(--neutral-soft); border-radius:6px; padding:2px 7px; margin:3px 4px 3px 0; font-size:12px; }
 .trace-badge.caution { color:var(--warn); background:var(--warn-soft); }
 .trace-note { color:var(--sub); font-size:12px; margin-top:10px !important; }

@@ -51,6 +51,7 @@ try {
     window._messages=[];
     window.chrome.runtime={getURL:p=>origin+'/'+p,sendMessage:async m=>{
       window._messages.push(m);
+      if(m.type==='NEWSCHECK_GET_CACHED_ARTICLE')return {ok:true,data:{payload:null}};
       if(m.type==='NEWSCHECK_FETCH_ARTICLE')return {ok:true,data:{html:articleHtml,url:m.url}};
       if(m.type==='NEWSCHECK_PREVIEW')return {ok:true,data:{article_id:fixture.article_id,is_demo:true,summary:fixture.one_line_summary,major_evidence:fixture.evidence_mentions,sources:fixture.sources,headline_difference:fixture.headline_difference,one_line_caution:fixture.caution.reasons[0],search_status:fixture.search_status}};
       if(m.type==='NEWSCHECK_SELECTION')return {ok:true,data:{article_id:fixture.article_id,selected_text:m.payload.selected_text,is_demo:true,claims:fixture.claims,sources:fixture.sources,caution:fixture.caution}};

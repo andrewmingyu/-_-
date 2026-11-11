@@ -6,7 +6,7 @@ AI는 뉴스의 사실·거짓, 주장-근거의 논리 타당성을 대신 판�
 원본 자료 확인이나 주의사항 부재도 주장의 진실성을 입증하지 않습니다.
 
 ## 개발 기준 버전과 현재 상태
-확장 manifest 0.2.0 / 데이터 계약 source-tracing-v1을 개발 기준으로 사용합니다.
+확장 manifest 0.2.0 / 기존 경로·schema_version=source-tracing-v1을 유지하고 추가 필드의 data_version=source-tracing-v1.1을 사용합니다.
 현재는 **mock 시연 및 자동 검증을 마친 개발 기준점**입니다. 실제 Gemini·Tavily 품질과 Chrome 설치 상태의 네이버 통합은 추가 검증이 필요합니다.
 기존 HTML/CSS/JavaScript 구조와 기사 추출·원문 위치 이동·아이콘을 보존했습니다. React 전면 재작성이나 담당자 배정은 하지 않았습니다.
 
@@ -19,7 +19,8 @@ AI는 뉴스의 사실·거짓, 주장-근거의 논리 타당성을 대신 판�
 - 주의사항 상태: caution / none_identified / unknown, 객관적인 이유 및 미확인 정보 함께 저장.
 - 실제 검색 URL·ID·정확한 원문 인용 검사, 검색 실패와 빈 결과 구분.
 - URL·본문 해시 기반 메모리 캐시와 진행 중 요청 공유.
-- 키 없이 확인할 수 있는 고정 mock 시연.
+- 기사 내부 링크·인용·위치 및 확인 가능한 사건 정보 전달, 카드별 분석/오류/데이터 부족 상태.
+- 키 없이 입력 기사에 따라 동일 파이프라인을 실행하는 Mock 모드와 별도의 정적 ?demo UI 시연.
 
 ## 기술 스택
 | 영역 | 현재 구현 |
@@ -88,7 +89,8 @@ if (!(Test-Path -LiteralPath backend/.env)) {
 - 확장 옵션의 서버 주소 기본값: http://127.0.0.1:8000.
 
 ## Mock와 실제 API 모드
-backend/.env의 기본값은 `ANALYSIS_MODE=mock`입니다. 요청한 기사를 실제 분석하지 않고 고정 가상 예시를 반환합니다.
+backend/.env의 기본값은 `ANALYSIS_MODE=mock`입니다. 입력 본문과 메타데이터를 사용해 실제 Analyzer의 추출→검색→출처 관찰→주의사항→캐시 경로를 규칙·fixture 공급자로 실행합니다. 원문 위치와 기사 해시도 입력에 맞게 산출합니다. 실제 AI·실제 검색 결과는 아니며 is_demo=true를 유지합니다.
+fixtures/naver_article.html과 mock_source_documents.json은 서로 연결된 가상 기사·자료입니다. 그 밖의 입력에 이 가상 자료를 임의로 연결하지 않습니다. ?demo 옵션 화면만 기존의 고정 UI 예시를 사용합니다.
 화면마다 시연용 예시를 표시하고 가상 URL은 클릭되지 않습니다. 본문 없는 요청은 mock에서도 422입니다.
 
 실제 분석을 검증할 때 서버 환경 파일을 다음과 같이 설정하고 서버를 재시작합니다.
@@ -109,6 +111,7 @@ npm.cmd test
 npm.cmd run typecheck
 npm.cmd run build
 npm.cmd run test:browser
+npm.cmd run test:integration
 .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe scripts/smoke_backend.py
 node scripts/check-commit.mjs
@@ -117,16 +120,18 @@ git diff --check
 브라우저 테스트는 기본 `C:/Program Files/Google/Chrome/Application/chrome.exe`를 사용합니다.
 다르면 `$env:CHROME_PATH='설치된 Chrome 실행 파일 경로'`를 설정합니다.
 HTTP smoke는 임시 로컬 포트의 mock 서버를 띄우며 실제 AI API를 호출하지 않습니다.
+통합 검사는 실제 extractArticle·background.js·API 클라이언트·Uvicorn·Mock 파이프라인·카드/팝업을 연결합니다. Chrome API 경계와 네이버 페이지는 테스트 어댑터/합성 DOM이며 설치된 확장이나 실제 네이버 검사를 대신하지 않습니다. Python 경로를 별도로 지정하려면 PYTHON_PATH를 사용합니다.
 자동 검사가 실제 모델 품질·Chrome 설치 상태 검증을 대신하지 않습니다. 상세 증거와 남은 검사는 [VALIDATION](docs/VALIDATION.md)에 있습니다.
 
 ## 현재 제약과 다음 작업
 - 실제 Gemini·Tavily 호출, 설치된 MV3 권한·서비스 워커·실제 네이버 DOM은 추가 검증이 필요합니다.
-- 기사 추출은 본문 12,000자 제한이 있고 기사 밖 배경·기자 약력·사건일/장소 보강은 미구현입니다.
+- 본문 12,000자 제한은 body_truncated와 주의사항으로 표시합니다. JSON-LD Event/기사 원문의 날짜·장소를 확인한 경우에만 반영합니다. 기사 밖 배경·기자 약력의 독립 수집은 미구현입니다.
 - 관련 기사는 검색 요약이며 전문 비교·독립성 확인 결과로 표시하지 않습니다.
 - 출처 속성은 원문에서 관찰한 문구입니다. 전문자격·이해관계 부재·원본 관계를 독립적으로 보증하지 않습니다.
 - Hover는 redirect·차단·유료 페이지에서 실패할 수 있습니다. 제목으로 대체 요약하지 않습니다.
 - 캐시는 메모리 기본 15분/최대 128건이며 서버 재시작 시 사라집니다.
-- 429 자동 backoff, 요청/비용 제한, 공개 서버 인증·지속 캐시는 아직 없습니다.
+- 429/503/504/502와 단계별 오류·Retry-After는 구분하지만 자동 backoff, 요청/비용 제한, 공개 서버 인증·지속 캐시는 아직 없습니다.
+- GET /api/articles/{article_id}?url=...로 만료 전 결과를 조회합니다. Hover의 30초/64건 워커 인덱스와 서버 본문 해시 검사로 수집 전 캐시를 확인하고, 없으면 본문을 수집합니다.
 - 세부 상태 25건은 [PROJECT_SPEC](docs/PROJECT_SPEC.md), 다음 개발의 완료 조건은 [TODO](docs/TODO.md)를 따릅니다.
 
 ## 개발 문서

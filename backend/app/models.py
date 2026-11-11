@@ -12,9 +12,54 @@ class Model(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
 
+class TextSpan(Model):
+    start: int = Field(ge=0)
+    end: int = Field(ge=0)
+    quote: str
+
+
+class CautionDetail(Model):
+    reason: str = Field(min_length=1)
+    source_ids: list[str] = Field(default_factory=list)
+    claim_ids: list[str] = Field(default_factory=list)
+
+
 class Decision(Model):
     status: CautionStatus = 'unknown'
     reasons: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
+    details: list[CautionDetail] = Field(default_factory=list)
+
+
+class ArticleLink(Model):
+    url: HttpUrl
+    text: str = Field(max_length=500)
+    article_quote: str = Field(default='', max_length=2000)
+
+
+class ArticleContext(Model):
+    cited_links: list[ArticleLink] = Field(default_factory=list, max_length=30)
+    quotations: list[str] = Field(default_factory=list, max_length=30)
+    body_truncated: bool = False
+
+
+class EventInfo(Model):
+    description: str | None = None
+    article_quote: str | None = None
+    time: str | None = None
+    location: str | None = None
+
+
+class PipelineError(Model):
+    phase: str
+    code: str
+    message: str
+    provider: str | None = None
+    retry_after_seconds: int | None = None
+
+
+class SectionState(Model):
+    status: Literal['ready', 'empty', 'partial', 'error']
+    message: str | None = None
 
 
 class Article(Model):
@@ -38,6 +83,7 @@ class Mention(Model):
     document_title: str | None = None
     source_kind: str = 'unknown'
     anonymous: bool = False
+    article_span: TextSpan | None = None
 
 
 class Claim(Model):
@@ -50,6 +96,7 @@ class Claim(Model):
     source_ids: list[str] = Field(default_factory=list)
     source_status: SourceStatus = 'unknown'
     caution: Decision = Field(default_factory=lambda: Decision(reasons=['출처 분석 전입니다.']))
+    article_span: TextSpan | None = None
 
 
 class Observation(Model):
@@ -59,6 +106,7 @@ class Observation(Model):
 
 class SourceFacts(Model):
     identity: Observation | None = None
+    authorship: Observation | None = None
     originality: Observation | None = None
     expertise: Observation | None = None
     information_access: Observation | None = None
@@ -74,6 +122,7 @@ class Source(Model):
     url: HttpUrl
     title: str
     publisher: str | None = None
+    author: str | None = None
     published_at: str | None = None
     retrieved_at: str
     discovery: Literal['article_cited', 'external_found']
@@ -84,12 +133,15 @@ class Source(Model):
     unknown_fields: list[str] = Field(default_factory=list)
     summary: str
     caution: Decision
+    content_status: Literal['retrieved', 'snippet_only', 'unavailable', 'unknown'] = 'unknown'
 
 
 class TimelineItem(Model):
     date: str
     description: str
     article_quote: str
+    article_span: TextSpan | None = None
+    source_ids: list[str] = Field(default_factory=list)
 
 
 class RelatedArticle(Model):
@@ -99,10 +151,13 @@ class RelatedArticle(Model):
     published_at: str | None = None
     differences_summary: str
     independence: str = '독립적인 자료에 기반했는지 확인하지 못했습니다.'
+    topic: str | None = None
+    summary: str | None = None
 
 
 class ArticleAnalysis(Model):
     schema_version: Literal['source-tracing-v1'] = 'source-tracing-v1'
+    data_version: str = 'source-tracing-v1.1'
     article_id: str
     body_hash: str
     analysis_status: Literal['partial', 'complete']
@@ -120,6 +175,10 @@ class ArticleAnalysis(Model):
     search_status: SearchStatus
     search_errors: list[str] = Field(default_factory=list)
     analyzed_at: str
+    event: EventInfo = Field(default_factory=EventInfo)
+    article_context: ArticleContext = Field(default_factory=ArticleContext)
+    section_states: dict[str, SectionState] = Field(default_factory=dict)
+    pipeline_errors: list[PipelineError] = Field(default_factory=list)
 
     @model_validator(mode='after')
     def references_exist(self):
@@ -132,6 +191,11 @@ class ArticleAnalysis(Model):
             raise ValueError('Unknown mention claim')
         if any(not set(s.mention_ids) <= mention_ids for s in self.sources):
             raise ValueError('Unknown source mention')
+        if any(not set(t.source_ids) <= source_ids for t in self.context_timeline):
+            raise ValueError('Unknown timeline source')
+        for decision in [self.caution, *[c.caution for c in self.claims], *[s.caution for s in self.sources]]:
+            if any(not set(d.source_ids) <= source_ids or not set(d.claim_ids) <= claim_ids for d in decision.details):
+                raise ValueError('Unknown caution reference')
         return self
 
 
@@ -141,6 +205,7 @@ class AnalyzeRequest(Model):
     page_text: str = Field(default='', max_length=60000)
     metadata: Article | None = None
     refresh: bool = False
+    article_context: ArticleContext = Field(default_factory=ArticleContext)
 
 
 class SelectionRequest(AnalyzeRequest):
@@ -156,6 +221,10 @@ class SelectionAnalysis(Model):
     claims: list[Claim]
     sources: list[Source]
     caution: Decision
+    pipeline_errors: list[PipelineError] = Field(default_factory=list)
+    analysis_id: str | None = None
+    matched_claim_ids: list[str] = Field(default_factory=list)
+    evidence_mentions: list[Mention] = Field(default_factory=list)
 
 
 class Preview(Model):
@@ -167,6 +236,10 @@ class Preview(Model):
     headline_difference: str
     one_line_caution: str
     search_status: SearchStatus
+    claims: list[Claim] = Field(default_factory=list)
+    body_hash: str = ''
+    data_version: str = 'source-tracing-v1.1'
+    pipeline_errors: list[PipelineError] = Field(default_factory=list)
 
 
 class Extraction(Model):
@@ -175,6 +248,7 @@ class Extraction(Model):
     evidence_mentions: list[Mention]
     context_timeline: list[TimelineItem] = Field(default_factory=list)
     headline_difference: str
+    event: EventInfo = Field(default_factory=EventInfo)
 
 
 class SourceReview(Model):

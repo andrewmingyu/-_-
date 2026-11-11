@@ -15,12 +15,25 @@ export function extractArticle(htmlText = null, pageUrl = null) {
   };
 
   const host = location.hostname.replace(/^www\./, "");
+  const structured = [];
+  const visit = value => {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (!value || typeof value !== 'object') return;
+    structured.push(value);
+    if (value['@graph']) visit(value['@graph']);
+    if (value.mainEntity) visit(value.mainEntity);
+  };
+  document.querySelectorAll('script[type="application/ld+json"]').forEach(script => {
+    try { if (script.textContent.length <= 200000) visit(JSON.parse(script.textContent)); } catch (_) {}
+  });
+  const articleData = structured.find(item => [item['@type']].flat().some(type => ['NewsArticle','Article','ReportageNewsArticle'].includes(type))) || {};
 
   // ---------- 언론사 ----------
   let press = meta("og:article:author", "og:site_name", "twitter:site", "application-name");
   press = press.replace(/\s*[|│]\s*네이버.*$/, "").replace(/^@/, "").trim();
+  if ((!press || /네이버|naver/i.test(press)) && typeof articleData.publisher?.name==='string') press=articleData.publisher.name;
   const naverLogo = document.querySelector(".media_end_head_top_logo img, .press_logo img");
-  if ((!press || /네이버|naver/i.test(press)) && naverLogo) press = naverLogo.alt || naverLogo.title || press;
+  if ((['news.naver.com','n.news.naver.com'].includes(host) || !press || /네이버|naver/i.test(press)) && naverLogo) press = naverLogo.alt || naverLogo.title || press;
 
   // ---------- 제목 ----------
   const headlineSelectors = [
@@ -34,7 +47,7 @@ export function extractArticle(htmlText = null, pageUrl = null) {
     if (t && t.length >= 8 && t.length <= 200) { title = t; break; }
   }
   if (!title) {
-    title = meta("og:title", "twitter:title") || document.title;
+    title = meta("og:title", "twitter:title") || (typeof articleData.headline==='string'?articleData.headline:'') || document.title;
     const site = meta("og:site_name");
     // "기사 제목 - 언론사명" 꼬리 제거
     title = title.replace(/\s*[-|:│]\s*([^-|:│]{1,20})$/, (m, tail) =>
@@ -138,7 +151,7 @@ export function extractArticle(htmlText = null, pageUrl = null) {
     if (reporters.length) break;
   }
   if (!reporters.length) {
-    const metaAuthor = meta("author", "article:author", "dable:author", "byl");
+    const metaAuthor = meta("author", "article:author", "dable:author", "byl") || [articleData.author].flat().map(a => typeof a === 'string' ? a : a?.name || '').join(', ');
     let m; reporterRe.lastIndex = 0;
     while ((m = reporterRe.exec(metaAuthor))) addName(m[1]);
     if (!reporters.length) addName(metaAuthor.replace(/기자.*$/, ""));
@@ -154,12 +167,31 @@ export function extractArticle(htmlText = null, pageUrl = null) {
   // ---------- 날짜 ----------
   let published = meta("article:published_time", "og:regDate", "datePublished", "pubdate", "date");
   let modified = meta("article:modified_time", "dateModified");
-  const naverDate = document.querySelector(".media_end_head_info_datestamp_time");
+  const naverDate = document.querySelector("._ARTICLE_DATE_TIME, .media_end_head_info_datestamp_time");
   if (!published && naverDate) published = naverDate.getAttribute("data-date-time") || txt(naverDate);
-  if (!published) {
-    const m = (document.body ? txt(document.body).slice(0, 4000) : "").match(/(20\d{2})[.\-년]\s?(\d{1,2})[.\-월]\s?(\d{1,2})/);
-    if (m) published = `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-  }
+  const naverModified = document.querySelector('._ARTICLE_MODIFY_DATE_TIME, [data-modify-date-time]');
+  if (!modified && naverModified) modified = naverModified.getAttribute('data-modify-date-time') || naverModified.getAttribute('data-date-time') || txt(naverModified);
+  if (!published && typeof articleData.datePublished === 'string') published = articleData.datePublished;
+  if (!modified && typeof articleData.dateModified === 'string') modified = articleData.dateModified;
+  // A date mentioned in the article body is not necessarily the publication date.
+
+  const pageText = body.slice(0,12000).replace(/\s+/g,' ').trim();
+  const links = [];
+  const seenLinks = new Set();
+  bodyEl?.querySelectorAll('a[href]').forEach(anchor => {
+    try {
+      const url = new URL(anchor.getAttribute('href'),location.href);
+      const label = txt(anchor).replace(/\s+/g,' ').trim();
+      if (!['http:','https:'].includes(url.protocol) || url.username || url.password || !label || label.length>500 || !pageText.includes(label) || seenLinks.has(url.href)) return;
+      seenLinks.add(url.href);
+      links.push({url:url.href,text:label,article_quote:label});
+    } catch (_) {}
+  });
+  const quotations = [...pageText.matchAll(/[“\"]([^”\"]{2,1000})[”\"]/g)].map(match => match[1]).slice(0,30);
+  const eventData = [articleData.about].flat().find(item => item && [item['@type']].flat().includes('Event')) || {};
+  const eventTime = typeof eventData.startDate === 'string' && pageText.includes(eventData.startDate) ? eventData.startDate : null;
+  const place = typeof eventData.location === 'string' ? eventData.location : eventData.location?.name;
+  const eventLocation = typeof place === 'string' && pageText.includes(place) ? place : null;
 
   // ---------- 원문 링크 (네이버 뉴스 등) ----------
   const origin = document.querySelector("a.media_end_head_origin_link, a[class*='origin']");
@@ -175,6 +207,9 @@ export function extractArticle(htmlText = null, pageUrl = null) {
     reporterEmail: emailMatch ? emailMatch[0] : "",
     published,
     modified,
+    event_time: eventTime,
+    event_location: eventLocation,
+    article_context: {cited_links:links.slice(0,30),quotations,body_truncated:body.length>12000},
     body: body.slice(0, 12000),
     paragraphs: paragraphs.slice(0, 80),
     images: images.slice(0, 8),

@@ -19,3 +19,8 @@ Latest user instructions take precedence. This repository is the canonical devel
 - Use separate branches, reviewed staged files and PRs. No direct default-branch push/force push. External push/PR/merge must be in the user's authorized scope.
 - Respect reviews, required checks and branch/ruleset protections; never bypass them. Recheck default-branch tests/build after merge.
 - Follow CONTRIBUTING.md. Do not assign roles, owners or workloads or create GitHub Issues unless separately requested.
+
+- Mock APIs must run the same Analyzer pipeline with deterministic providers and bind IDs/hashes to input; reserve the fixed fixture for the standalone UI demo. No external calls in mock/integration tests.
+- Maintain additive v1 defaults and data_version. Ground event/span/caution links; namespace new selection claims and preserve parent analysis IDs.
+- Run npm run test:integration for changes crossing extraction, worker, API, cache and UI; never equate replay adapters with an installed-extension/live-service test.
+- Respect the current task Git boundary: the user authorized committing, pushing feature/core-flow-integration and opening a PR. Merge and Issues remain outside this task's scope; later explicit user instructions may supersede this boundary.

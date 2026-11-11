@@ -3,7 +3,7 @@
 
 ## 1. 기사와 메타데이터 수집
 확장이 제목·본문·언론사·기자·게시/수정일·URL을 추출한다. 본문은 기존 추출기의 12,000자 제한이 있다.
-event_time/event_location/author_profile_url은 계약·표시가 있으나 현재 자동 수집하지 않고 null로 보낸다.
+JSON-LD Event의 날짜·장소가 실제 본문에 있는 경우와 Gemini EventInfo의 인용에 포함된 날짜·장소를 연결한다. 없는 값은 null이다. 기자 프로필 독립 수집은 아직 없다. 기사 내부 링크·인용·본문 잘림은 ArticleContext에 담는다.
 본문이 없으면 실패한다. 제목만으로 본문 요약을 만들지 않는다.
 
 ## 2. 핵심 주장 및 기사 내부 근거
@@ -20,11 +20,11 @@ Tavily 일반 검색으로 질의별 최대 5건 및 raw_content를 요청한다
 URL 정규화와 동일 URL 중복 제거 후 서버가 해시 기반 source ID를 부여한다.
 제목/URL/published_date/retrieved_at과 원문 앞 16,000자를 보존해 다음 단계에 제공한다.
 검색 요약은 탐색 힌트이며 raw_content가 없으면 이를 원문 관찰로 대체하지 않는다.
-실제 검색 실패·완료된 빈 결과·근거 언급 자체 없음은 각각 failed/completed/not_run으로 구분한다.
+실제 검색 실패·완료된 빈 결과·근거 언급 자체 없음은 각각 failed/completed/not_run으로 구분한다. raw_content가 없는 검색 URL 최대 3개는 Tavily extract로 보강한다. 반환 URL을 원래 후보 허용 목록과 대조하며 새 URL은 저장하지 않는다. 보강 실패는 검색 미발견과 구분하여 content_status/pipeline_errors에 기록한다.
 
 ## 4. 출처의 정체·원본 관계·전문성·검증 가능성
 Gemini는 주어진 source ID에 한해서만 자료 연결과 SourceFacts의 정확한 원문 인용을 추출한다.
-SourceFacts: identity, originality, expertise, information_access, date_context,
+SourceFacts: identity, authorship, originality, expertise, information_access, date_context,
 public_access, methodology, interests, independence. 없는 속성은 null이다.
 서버가 실제 raw_content에 포함되지 않는 excerpt를 제거한다.
 article_cited는 기사 자료명 또는 엄격한 기관·인용 연결이 확인되는 경우이고, 그 외는 external_found로 둔다.
@@ -42,7 +42,7 @@ original_found는 자료 연결·원자료 인용·기관 정체를 함께 요�
 일반 코드가 원출처 미발견/재인용/미명시/익명/조사방법 미확인/이해관계 관련 문구/날짜 차이/의견·예측을 안내한다.
 자료가 기사보다 365일을 초과하여 오래되면 날짜 차이와 최신 자료 확인 필요성만 적는다.
 양쪽 날짜나 속성이 없으면 미확인을 유지한다.
-caution / none_identified / unknown과 비어 있지 않은 reasons를 저장한다.
+caution / none_identified / unknown과 비어 있지 않은 reasons를 저장한다. details에는 이유별 source_ids/claim_ids를 연결한다. 인용 위치는 서버가 article_span으로 산출한다.
 none_identified는 현재 관찰 범위에서 별도 주의사항이 없다는 뜻이며 진위의 결론이 아니다.
 
 ## 7. 결과 저장과 전달
@@ -56,3 +56,7 @@ UI는 source_status·caution을 표시하며 사실/거짓 자동 색상 강조�
 P0에서 실제 기사 2~3건과 원문 자료를 저장 범위에 유의해 수동 대조하고,
 추출 누락/의미 변경/잘못된 출처 연결/관찰 인용 오류/과잉·누락 주의사항을 유형별로 기록한다.
 실제 API 키, 모델 가용성·할당량 및 응답시간은 이번 기준 버전에서 검증되지 않았다.
+
+## 입력 기반 Mock와 실제 연결의 구분
+MockLLM/MockSearch도 동일 Analyzer를 거친다. 기사 원문에서 2~3개 문장을 시연 추출하고, 명시적으로 일치하는 가상 자료만 fixture 검색으로 반환한다. 출처는 원문 인용/ID 검사와 동일 주의사항 규칙을 통과한다. 실제 AI 성능·검색 성공의 증거는 아니며 모든 화면의 is_demo 표시를 유지한다.
+새 선택 분석은 부모 article_id와 별도의 analysis_id 및 scoped claim ID를 사용하고 원본 기사 결과를 덮어쓰지 않는다. 기존 주장 재사용 여부는 matched_claim_ids로 표현한다.

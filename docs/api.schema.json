@@ -109,6 +109,63 @@
         ],
         "title": "Article",
         "type": "object"
+      },
+      "ArticleContext": {
+        "additionalProperties": false,
+        "properties": {
+          "cited_links": {
+            "items": {
+              "$ref": "#/$defs/ArticleLink"
+            },
+            "maxItems": 30,
+            "title": "Cited Links",
+            "type": "array"
+          },
+          "quotations": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Quotations",
+            "type": "array"
+          },
+          "body_truncated": {
+            "default": false,
+            "title": "Body Truncated",
+            "type": "boolean"
+          }
+        },
+        "title": "ArticleContext",
+        "type": "object"
+      },
+      "ArticleLink": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 500,
+            "title": "Text",
+            "type": "string"
+          },
+          "article_quote": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Article Quote",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "text"
+        ],
+        "title": "ArticleLink",
+        "type": "object"
       }
     },
     "additionalProperties": false,
@@ -147,6 +204,9 @@
         "default": false,
         "title": "Refresh",
         "type": "boolean"
+      },
+      "article_context": {
+        "$ref": "#/$defs/ArticleContext"
       }
     },
     "required": [
@@ -266,6 +326,92 @@
         "title": "Article",
         "type": "object"
       },
+      "ArticleContext": {
+        "additionalProperties": false,
+        "properties": {
+          "cited_links": {
+            "items": {
+              "$ref": "#/$defs/ArticleLink"
+            },
+            "maxItems": 30,
+            "title": "Cited Links",
+            "type": "array"
+          },
+          "quotations": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Quotations",
+            "type": "array"
+          },
+          "body_truncated": {
+            "default": false,
+            "title": "Body Truncated",
+            "type": "boolean"
+          }
+        },
+        "title": "ArticleContext",
+        "type": "object"
+      },
+      "ArticleLink": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 500,
+            "title": "Text",
+            "type": "string"
+          },
+          "article_quote": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Article Quote",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "text"
+        ],
+        "title": "ArticleLink",
+        "type": "object"
+      },
+      "CautionDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Ids",
+            "type": "array"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Claim Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "CautionDetail",
+        "type": "object"
+      },
       "Claim": {
         "additionalProperties": false,
         "properties": {
@@ -334,6 +480,17 @@
           },
           "caution": {
             "$ref": "#/$defs/Decision"
+          },
+          "article_span": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TextSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -366,12 +523,74 @@
             "minItems": 1,
             "title": "Reasons",
             "type": "array"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/$defs/CautionDetail"
+            },
+            "title": "Details",
+            "type": "array"
           }
         },
         "required": [
           "reasons"
         ],
         "title": "Decision",
+        "type": "object"
+      },
+      "EventInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "article_quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Article Quote"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Location"
+          }
+        },
+        "title": "EventInfo",
         "type": "object"
       },
       "Mention": {
@@ -429,6 +648,17 @@
             "default": false,
             "title": "Anonymous",
             "type": "boolean"
+          },
+          "article_span": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TextSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -453,6 +683,54 @@
           "excerpt"
         ],
         "title": "Observation",
+        "type": "object"
+      },
+      "PipelineError": {
+        "additionalProperties": false,
+        "properties": {
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider"
+          },
+          "retry_after_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Retry After Seconds"
+          }
+        },
+        "required": [
+          "phase",
+          "code",
+          "message"
+        ],
+        "title": "PipelineError",
         "type": "object"
       },
       "RelatedArticle": {
@@ -501,6 +779,30 @@
             "default": "독립적인 자료에 기반했는지 확인하지 못했습니다.",
             "title": "Independence",
             "type": "string"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Topic"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Summary"
           }
         },
         "required": [
@@ -509,6 +811,38 @@
           "differences_summary"
         ],
         "title": "RelatedArticle",
+        "type": "object"
+      },
+      "SectionState": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": [
+              "ready",
+              "empty",
+              "partial",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SectionState",
         "type": "object"
       },
       "Source": {
@@ -540,6 +874,18 @@
             ],
             "default": null,
             "title": "Publisher"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Author"
           },
           "published_at": {
             "anyOf": [
@@ -604,6 +950,17 @@
           },
           "caution": {
             "$ref": "#/$defs/Decision"
+          },
+          "content_status": {
+            "default": "unknown",
+            "enum": [
+              "retrieved",
+              "snippet_only",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Content Status",
+            "type": "string"
           }
         },
         "required": [
@@ -622,6 +979,17 @@
         "additionalProperties": false,
         "properties": {
           "identity": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "authorship": {
             "anyOf": [
               {
                 "$ref": "#/$defs/Observation"
@@ -724,6 +1092,32 @@
         "title": "SourceFacts",
         "type": "object"
       },
+      "TextSpan": {
+        "additionalProperties": false,
+        "properties": {
+          "start": {
+            "minimum": 0,
+            "title": "Start",
+            "type": "integer"
+          },
+          "end": {
+            "minimum": 0,
+            "title": "End",
+            "type": "integer"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "quote"
+        ],
+        "title": "TextSpan",
+        "type": "object"
+      },
       "TimelineItem": {
         "additionalProperties": false,
         "properties": {
@@ -738,6 +1132,24 @@
           "article_quote": {
             "title": "Article Quote",
             "type": "string"
+          },
+          "article_span": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TextSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Ids",
+            "type": "array"
           }
         },
         "required": [
@@ -755,6 +1167,11 @@
         "const": "source-tracing-v1",
         "default": "source-tracing-v1",
         "title": "Schema Version",
+        "type": "string"
+      },
+      "data_version": {
+        "default": "source-tracing-v1.1",
+        "title": "Data Version",
         "type": "string"
       },
       "article_id": {
@@ -850,6 +1267,26 @@
       "analyzed_at": {
         "title": "Analyzed At",
         "type": "string"
+      },
+      "event": {
+        "$ref": "#/$defs/EventInfo"
+      },
+      "article_context": {
+        "$ref": "#/$defs/ArticleContext"
+      },
+      "section_states": {
+        "additionalProperties": {
+          "$ref": "#/$defs/SectionState"
+        },
+        "title": "Section States",
+        "type": "object"
+      },
+      "pipeline_errors": {
+        "items": {
+          "$ref": "#/$defs/PipelineError"
+        },
+        "title": "Pipeline Errors",
+        "type": "array"
       }
     },
     "required": [
@@ -977,6 +1414,63 @@
         ],
         "title": "Article",
         "type": "object"
+      },
+      "ArticleContext": {
+        "additionalProperties": false,
+        "properties": {
+          "cited_links": {
+            "items": {
+              "$ref": "#/$defs/ArticleLink"
+            },
+            "maxItems": 30,
+            "title": "Cited Links",
+            "type": "array"
+          },
+          "quotations": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Quotations",
+            "type": "array"
+          },
+          "body_truncated": {
+            "default": false,
+            "title": "Body Truncated",
+            "type": "boolean"
+          }
+        },
+        "title": "ArticleContext",
+        "type": "object"
+      },
+      "ArticleLink": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 500,
+            "title": "Text",
+            "type": "string"
+          },
+          "article_quote": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Article Quote",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "text"
+        ],
+        "title": "ArticleLink",
+        "type": "object"
       }
     },
     "additionalProperties": false,
@@ -1016,6 +1510,9 @@
         "title": "Refresh",
         "type": "boolean"
       },
+      "article_context": {
+        "$ref": "#/$defs/ArticleContext"
+      },
       "article_id": {
         "anyOf": [
           {
@@ -1050,6 +1547,35 @@
   },
   "SelectionAnalysis": {
     "$defs": {
+      "CautionDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Ids",
+            "type": "array"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Claim Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "CautionDetail",
+        "type": "object"
+      },
       "Claim": {
         "additionalProperties": false,
         "properties": {
@@ -1118,6 +1644,17 @@
           },
           "caution": {
             "$ref": "#/$defs/Decision"
+          },
+          "article_span": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TextSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -1150,309 +1687,12 @@
             "minItems": 1,
             "title": "Reasons",
             "type": "array"
-          }
-        },
-        "required": [
-          "reasons"
-        ],
-        "title": "Decision",
-        "type": "object"
-      },
-      "Observation": {
-        "additionalProperties": false,
-        "properties": {
-          "excerpt": {
-            "maxLength": 1200,
-            "minLength": 1,
-            "title": "Excerpt",
-            "type": "string"
-          }
-        },
-        "required": [
-          "excerpt"
-        ],
-        "title": "Observation",
-        "type": "object"
-      },
-      "Source": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
           },
-          "url": {
-            "format": "uri",
-            "maxLength": 2083,
-            "minLength": 1,
-            "title": "Url",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "publisher": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Publisher"
-          },
-          "published_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Published At"
-          },
-          "retrieved_at": {
-            "title": "Retrieved At",
-            "type": "string"
-          },
-          "discovery": {
-            "enum": [
-              "article_cited",
-              "external_found"
-            ],
-            "title": "Discovery",
-            "type": "string"
-          },
-          "mention_ids": {
+          "details": {
             "items": {
-              "type": "string"
+              "$ref": "#/$defs/CautionDetail"
             },
-            "title": "Mention Ids",
-            "type": "array"
-          },
-          "source_kind": {
-            "default": "unknown",
-            "title": "Source Kind",
-            "type": "string"
-          },
-          "original_status": {
-            "default": "unknown",
-            "enum": [
-              "original_found",
-              "secondary_only",
-              "source_not_found",
-              "unknown"
-            ],
-            "title": "Original Status",
-            "type": "string"
-          },
-          "facts": {
-            "$ref": "#/$defs/SourceFacts"
-          },
-          "unknown_fields": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Unknown Fields",
-            "type": "array"
-          },
-          "summary": {
-            "title": "Summary",
-            "type": "string"
-          },
-          "caution": {
-            "$ref": "#/$defs/Decision"
-          }
-        },
-        "required": [
-          "id",
-          "url",
-          "title",
-          "retrieved_at",
-          "discovery",
-          "summary",
-          "caution"
-        ],
-        "title": "Source",
-        "type": "object"
-      },
-      "SourceFacts": {
-        "additionalProperties": false,
-        "properties": {
-          "identity": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/Observation"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "originality": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/Observation"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "expertise": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/Observation"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "information_access": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/Observation"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "date_context": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/Observation"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "public_access": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/Observation"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "methodology": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/Observation"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "interests": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/Observation"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "independence": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/Observation"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          }
-        },
-        "title": "SourceFacts",
-        "type": "object"
-      }
-    },
-    "additionalProperties": false,
-    "properties": {
-      "article_id": {
-        "title": "Article Id",
-        "type": "string"
-      },
-      "selected_text": {
-        "title": "Selected Text",
-        "type": "string"
-      },
-      "is_demo": {
-        "title": "Is Demo",
-        "type": "boolean"
-      },
-      "claims": {
-        "items": {
-          "$ref": "#/$defs/Claim"
-        },
-        "title": "Claims",
-        "type": "array"
-      },
-      "sources": {
-        "items": {
-          "$ref": "#/$defs/Source"
-        },
-        "title": "Sources",
-        "type": "array"
-      },
-      "caution": {
-        "$ref": "#/$defs/Decision"
-      }
-    },
-    "required": [
-      "article_id",
-      "selected_text",
-      "is_demo",
-      "claims",
-      "sources",
-      "caution"
-    ],
-    "title": "SelectionAnalysis",
-    "type": "object"
-  },
-  "Preview": {
-    "$defs": {
-      "Decision": {
-        "additionalProperties": false,
-        "properties": {
-          "status": {
-            "default": "unknown",
-            "enum": [
-              "caution",
-              "none_identified",
-              "unknown"
-            ],
-            "title": "Status",
-            "type": "string"
-          },
-          "reasons": {
-            "items": {
-              "minLength": 1,
-              "type": "string"
-            },
-            "minItems": 1,
-            "title": "Reasons",
+            "title": "Details",
             "type": "array"
           }
         },
@@ -1517,6 +1757,17 @@
             "default": false,
             "title": "Anonymous",
             "type": "boolean"
+          },
+          "article_span": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TextSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -1541,6 +1792,54 @@
           "excerpt"
         ],
         "title": "Observation",
+        "type": "object"
+      },
+      "PipelineError": {
+        "additionalProperties": false,
+        "properties": {
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider"
+          },
+          "retry_after_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Retry After Seconds"
+          }
+        },
+        "required": [
+          "phase",
+          "code",
+          "message"
+        ],
+        "title": "PipelineError",
         "type": "object"
       },
       "Source": {
@@ -1572,6 +1871,18 @@
             ],
             "default": null,
             "title": "Publisher"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Author"
           },
           "published_at": {
             "anyOf": [
@@ -1636,6 +1947,17 @@
           },
           "caution": {
             "$ref": "#/$defs/Decision"
+          },
+          "content_status": {
+            "default": "unknown",
+            "enum": [
+              "retrieved",
+              "snippet_only",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Content Status",
+            "type": "string"
           }
         },
         "required": [
@@ -1654,6 +1976,17 @@
         "additionalProperties": false,
         "properties": {
           "identity": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "authorship": {
             "anyOf": [
               {
                 "$ref": "#/$defs/Observation"
@@ -1755,6 +2088,679 @@
         },
         "title": "SourceFacts",
         "type": "object"
+      },
+      "TextSpan": {
+        "additionalProperties": false,
+        "properties": {
+          "start": {
+            "minimum": 0,
+            "title": "Start",
+            "type": "integer"
+          },
+          "end": {
+            "minimum": 0,
+            "title": "End",
+            "type": "integer"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "quote"
+        ],
+        "title": "TextSpan",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "article_id": {
+        "title": "Article Id",
+        "type": "string"
+      },
+      "selected_text": {
+        "title": "Selected Text",
+        "type": "string"
+      },
+      "is_demo": {
+        "title": "Is Demo",
+        "type": "boolean"
+      },
+      "claims": {
+        "items": {
+          "$ref": "#/$defs/Claim"
+        },
+        "title": "Claims",
+        "type": "array"
+      },
+      "sources": {
+        "items": {
+          "$ref": "#/$defs/Source"
+        },
+        "title": "Sources",
+        "type": "array"
+      },
+      "caution": {
+        "$ref": "#/$defs/Decision"
+      },
+      "pipeline_errors": {
+        "items": {
+          "$ref": "#/$defs/PipelineError"
+        },
+        "title": "Pipeline Errors",
+        "type": "array"
+      },
+      "analysis_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Analysis Id"
+      },
+      "matched_claim_ids": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Matched Claim Ids",
+        "type": "array"
+      },
+      "evidence_mentions": {
+        "items": {
+          "$ref": "#/$defs/Mention"
+        },
+        "title": "Evidence Mentions",
+        "type": "array"
+      }
+    },
+    "required": [
+      "article_id",
+      "selected_text",
+      "is_demo",
+      "claims",
+      "sources",
+      "caution"
+    ],
+    "title": "SelectionAnalysis",
+    "type": "object"
+  },
+  "Preview": {
+    "$defs": {
+      "CautionDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Ids",
+            "type": "array"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Claim Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "CautionDetail",
+        "type": "object"
+      },
+      "Claim": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "original_text": {
+            "title": "Original Text",
+            "type": "string"
+          },
+          "claim_text": {
+            "title": "Claim Text",
+            "type": "string"
+          },
+          "claim_type": {
+            "enum": [
+              "factual_narration",
+              "quotation",
+              "opinion",
+              "interpretation",
+              "prediction",
+              "context",
+              "statistics",
+              "unknown"
+            ],
+            "title": "Claim Type",
+            "type": "string"
+          },
+          "speaker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Speaker"
+          },
+          "mention_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Mention Ids",
+            "type": "array"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Ids",
+            "type": "array"
+          },
+          "source_status": {
+            "default": "unknown",
+            "enum": [
+              "original_found",
+              "secondary_only",
+              "source_not_found",
+              "unknown"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "caution": {
+            "$ref": "#/$defs/Decision"
+          },
+          "article_span": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TextSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id",
+          "original_text",
+          "claim_text",
+          "claim_type"
+        ],
+        "title": "Claim",
+        "type": "object"
+      },
+      "Decision": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "default": "unknown",
+            "enum": [
+              "caution",
+              "none_identified",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Reasons",
+            "type": "array"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/$defs/CautionDetail"
+            },
+            "title": "Details",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reasons"
+        ],
+        "title": "Decision",
+        "type": "object"
+      },
+      "Mention": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Claim Ids",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "article_quote": {
+            "title": "Article Quote",
+            "type": "string"
+          },
+          "source_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Label"
+          },
+          "document_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Document Title"
+          },
+          "source_kind": {
+            "default": "unknown",
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "anonymous": {
+            "default": false,
+            "title": "Anonymous",
+            "type": "boolean"
+          },
+          "article_span": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TextSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id",
+          "description",
+          "article_quote"
+        ],
+        "title": "Mention",
+        "type": "object"
+      },
+      "Observation": {
+        "additionalProperties": false,
+        "properties": {
+          "excerpt": {
+            "maxLength": 1200,
+            "minLength": 1,
+            "title": "Excerpt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "excerpt"
+        ],
+        "title": "Observation",
+        "type": "object"
+      },
+      "PipelineError": {
+        "additionalProperties": false,
+        "properties": {
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider"
+          },
+          "retry_after_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Retry After Seconds"
+          }
+        },
+        "required": [
+          "phase",
+          "code",
+          "message"
+        ],
+        "title": "PipelineError",
+        "type": "object"
+      },
+      "Source": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "url": {
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Publisher"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Author"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Published At"
+          },
+          "retrieved_at": {
+            "title": "Retrieved At",
+            "type": "string"
+          },
+          "discovery": {
+            "enum": [
+              "article_cited",
+              "external_found"
+            ],
+            "title": "Discovery",
+            "type": "string"
+          },
+          "mention_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Mention Ids",
+            "type": "array"
+          },
+          "source_kind": {
+            "default": "unknown",
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "original_status": {
+            "default": "unknown",
+            "enum": [
+              "original_found",
+              "secondary_only",
+              "source_not_found",
+              "unknown"
+            ],
+            "title": "Original Status",
+            "type": "string"
+          },
+          "facts": {
+            "$ref": "#/$defs/SourceFacts"
+          },
+          "unknown_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unknown Fields",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "caution": {
+            "$ref": "#/$defs/Decision"
+          },
+          "content_status": {
+            "default": "unknown",
+            "enum": [
+              "retrieved",
+              "snippet_only",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Content Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "title",
+          "retrieved_at",
+          "discovery",
+          "summary",
+          "caution"
+        ],
+        "title": "Source",
+        "type": "object"
+      },
+      "SourceFacts": {
+        "additionalProperties": false,
+        "properties": {
+          "identity": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "authorship": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "originality": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "expertise": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "information_access": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "date_context": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "public_access": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "methodology": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "interests": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "independence": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "title": "SourceFacts",
+        "type": "object"
+      },
+      "TextSpan": {
+        "additionalProperties": false,
+        "properties": {
+          "start": {
+            "minimum": 0,
+            "title": "Start",
+            "type": "integer"
+          },
+          "end": {
+            "minimum": 0,
+            "title": "End",
+            "type": "integer"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "quote"
+        ],
+        "title": "TextSpan",
+        "type": "object"
       }
     },
     "additionalProperties": false,
@@ -1801,6 +2807,30 @@
         ],
         "title": "Search Status",
         "type": "string"
+      },
+      "claims": {
+        "items": {
+          "$ref": "#/$defs/Claim"
+        },
+        "title": "Claims",
+        "type": "array"
+      },
+      "body_hash": {
+        "default": "",
+        "title": "Body Hash",
+        "type": "string"
+      },
+      "data_version": {
+        "default": "source-tracing-v1.1",
+        "title": "Data Version",
+        "type": "string"
+      },
+      "pipeline_errors": {
+        "items": {
+          "$ref": "#/$defs/PipelineError"
+        },
+        "title": "Pipeline Errors",
+        "type": "array"
       }
     },
     "required": [

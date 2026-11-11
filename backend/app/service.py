@@ -5,11 +5,14 @@ import os
 import re
 import time
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from .models import (Article, ArticleAnalysis, Claim, Decision, Extraction, Source, RelatedArticle,
-                     SourceFacts, SourceReviews, AnalyzeRequest, SelectionAnalysis)
+                     SourceFacts, SourceReviews, AnalyzeRequest, SelectionAnalysis, TextSpan,
+                     CautionDetail, ArticleContext, EventInfo, PipelineError, SectionState)
 from .prompts import EXTRACT, TRACE
+from .errors import ProviderError
 
 
 class ArticleInputError(ValueError):
@@ -28,6 +31,20 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+@lru_cache(maxsize=1)
+def publisher_names():
+    path=Path(__file__).resolve().parents[2]/'newscheck 4/data/press.json'
+    return {domain:item['name'] for domain,item in json.loads(path.read_text(encoding='utf-8'))['outlets'].items()}
+
+
+def publisher_name(url, explicit=None):
+    if isinstance(explicit,str) and explicit.strip():
+        return explicit.strip()
+    host=urlsplit(url).hostname or ''
+    domains=publisher_names()
+    return next((domains[d] for d in sorted(domains,key=len,reverse=True) if host==d or host.endswith('.'+d)),None)
+
+
 def body_hash(text):
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -35,10 +52,16 @@ def body_hash(text):
 def combine_decisions(decisions):
     status = 'caution' if any(d.status == 'caution' for d in decisions) else 'unknown' if not decisions or any(d.status == 'unknown' for d in decisions) else 'none_identified'
     reasons = list(dict.fromkeys(r for d in decisions for r in d.reasons))
-    return Decision(status=status, reasons=reasons or ['출처 분석에 필요한 정보가 부족합니다.'])
+    details = {}
+    for decision in decisions:
+        for detail in decision.details or [CautionDetail(reason=r) for r in decision.reasons]:
+            item = details.setdefault(detail.reason, CautionDetail(reason=detail.reason))
+            item.source_ids = list(dict.fromkeys(item.source_ids + detail.source_ids))
+            item.claim_ids = list(dict.fromkeys(item.claim_ids + detail.claim_ids))
+    return Decision(status=status, reasons=reasons or ['출처 분석에 필요한 정보가 부족합니다.'], details=list(details.values()))
 
 
-FACT_LABELS = {'identity': '작성기관', 'originality': '원자료 관계', 'expertise': '전문 분야',
+FACT_LABELS = {'identity': '작성기관', 'authorship': '작성자', 'originality': '원자료 관계', 'expertise': '전문 분야',
     'information_access': '자료 접근 경로', 'date_context': '작성 시점', 'public_access': '공개 범위',
     'methodology': '조사 방법', 'interests': '이해관계', 'independence': '자료 독립성'}
 
@@ -90,23 +113,65 @@ def claim_decision(claim, mentions, sources, search_status):
         decisions.append(Decision(status='caution', reasons=reasons))
     if search_status != 'completed' or claim.source_status == 'unknown':
         decisions.append(Decision(status='unknown', reasons=['검색 실패 또는 출처 관계 정보 부족으로 분석이 불완전합니다.']))
-    return combine_decisions(decisions)
+    result = combine_decisions(decisions)
+    for detail in result.details:
+        detail.claim_ids = list(dict.fromkeys(detail.claim_ids + [claim.id]))
+        if detail.reason in reasons:
+            detail.source_ids = [s.id for s in sources]
+    return result
+
+
+def text_span(text, quote):
+    start = text.find(quote) if quote else -1
+    return TextSpan(start=start, end=start + len(quote), quote=quote) if start >= 0 else None
+
+
+def clean_context(context, text):
+    links = []
+    seen = set()
+    for link in context.cited_links:
+        try:
+            url = normalize_url(link.url)
+        except ValueError:
+            continue
+        if url in seen or not link.text or link.text not in text:
+            continue
+        seen.add(url)
+        links.append(type(link).model_validate({**link.model_dump(mode='json'),'url':url,
+            'article_quote':link.article_quote if link.article_quote and link.article_quote in text else link.text}))
+    return ArticleContext(cited_links=links, quotations=[q for q in context.quotations if q and q in text], body_truncated=context.body_truncated)
 
 
 class Analyzer:
     def __init__(self, llm, search, mode='live', ttl=900):
+        if mode == 'mock':
+            from .mock import MockLLM, MockSearch
+            llm, search = MockLLM(), MockSearch()
         self.llm, self.search, self.mode, self.ttl = llm, search, mode, ttl
         self.cache, self.inflight = {}, {}
 
     def cache_key(self, request, focus=None):
         # Metadata/title are included so corrections cannot reuse an old presentation.
+        metadata = request.metadata.model_dump(mode='json') if request.metadata else None
+        if metadata:
+            metadata['url'] = normalize_url(request.url)
         return body_hash(json.dumps([normalize_url(request.url), body_hash(request.page_text),
-            request.title, request.metadata.model_dump(mode='json') if request.metadata else None,
-            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1', focus], ensure_ascii=False))
+            request.title, metadata, clean_context(request.article_context,request.page_text).model_dump(mode='json'),
+            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.1', focus], ensure_ascii=False))
+
+    def lookup(self, article_id, url=None):
+        for key, (expires, result) in list(self.cache.items()):
+            if expires <= time.monotonic():
+                self.cache.pop(key, None)
+                continue
+            if result.article_id == article_id and (url is None or normalize_url(result.article.url) == normalize_url(url)):
+                return result.model_copy(deep=True)
+        return None
 
     async def analyze(self, request, focus=None):
         if not request.page_text.strip():
             raise ArticleInputError('기사 본문을 확보하지 못했습니다. 제목만으로 요약하지 않습니다.')
+        request = request.model_copy(update={'article_context':clean_context(request.article_context,request.page_text)})
         try:
             key = self.cache_key(request, focus)
         except ValueError as exc:
@@ -129,28 +194,39 @@ class Analyzer:
                 self.inflight.pop(key, None)
 
     async def _run(self, request, key, focus=None):
-        if self.mode == 'mock':
-            path = Path(__file__).resolve().parents[2] / 'newscheck 4/data/demo.json'
-            # Fixed fixture is never passed off as analysis of the requested real article.
-            return ArticleAnalysis.model_validate_json(path.read_text(encoding='utf-8'))
         instruction = EXTRACT
         if focus:
             instruction += '\nselected_text에 해당하는 주장만 추출하라. 발언자와 기사 근거를 이해할 때 body의 주변 문맥을 참고하라.'
-        extracted = await self.llm.generate(instruction, {'title': request.title, 'body': request.page_text, 'selected_text': focus}, Extraction)
+        extracted = await self.llm.generate(instruction, {'title': request.title, 'body': request.page_text, 'selected_text': focus,
+            'article_context':request.article_context.model_dump(mode='json')}, Extraction)
         extracted = self.clean_extraction(extracted, request.page_text)
         if focus:
             extracted.claims = [c for c in extracted.claims if focus in c.original_text or c.original_text in focus]
             ids = {c.id for c in extracted.claims}
+            scoped_ids = {c.id:'selection_'+key[:10]+'_'+c.id for c in extracted.claims}
+            for claim in extracted.claims:
+                claim.id = scoped_ids[claim.id]
             for mention in extracted.evidence_mentions:
-                mention.claim_ids = [i for i in mention.claim_ids if i in ids]
+                mention.claim_ids = [scoped_ids[i] for i in mention.claim_ids if i in ids]
             extracted.evidence_mentions = [m for m in extracted.evidence_mentions if m.claim_ids]
         claims, mentions = extracted.claims, extracted.evidence_mentions
-        candidates, search_errors = {}, []
+        candidates, search_errors, pipeline_errors = {}, [], []
+        def record_error(exc, phase, provider):
+            error = exc if isinstance(exc,ProviderError) else ProviderError('provider_error',provider)
+            pipeline_errors.append(PipelineError(phase=phase, code=error.code, provider=error.provider,
+                message=error.message,retry_after_seconds=error.retry_after_seconds))
         queries = list(dict.fromkeys(' '.join(filter(None, [m.source_label, m.document_title, m.article_quote[:120]])) for m in mentions))[:3]
+        for link in request.article_context.cited_links:
+            if any(link.text in m.article_quote for m in mentions):
+                query = str(link.url) + ' ' + link.text
+                if query not in queries:
+                    queries.insert(0,query)
+        queries = queries[:3]
         for query in queries:
             try:
                 rows = await self.search.search(query)
-            except Exception:
+            except Exception as exc:
+                record_error(exc, 'source_search', 'tavily')
                 search_errors.append('원출처 검색 요청이 실패했습니다. 다시 시도할 수 있습니다.')
                 continue
             for row in rows:
@@ -164,20 +240,44 @@ class Analyzer:
                 candidate = {'id': 'src_' + body_hash(url)[:16], 'url': url,
                     'title': str(row.get('title') or ''), 'content': str(content)[:16000],
                     'snippet': str(row.get('content') or '')[:2000],
-                    'published_at': row.get('published_date') if isinstance(row.get('published_date'), str) else None, 'retrieved_at': now_iso()}
+                    'published_at': row.get('published_date') if isinstance(row.get('published_date'), str) else None, 'retrieved_at': now_iso(),
+                    'content_status':'retrieved' if content else 'snippet_only'}
                 # Search snippets are discovery hints, not full primary-source observations.
                 if url not in candidates or len(candidate['content']) > len(candidates[url]['content']):
                     candidates[url] = candidate
         search_status = 'failed' if search_errors else 'completed' if queries else 'not_run'
+        pending = [c['url'] for c in candidates.values() if not c['content']][:3]
+        if pending and hasattr(self.search,'extract'):
+            try:
+                documents = await self.search.extract(pending)
+                for document in documents:
+                    try:
+                        url = normalize_url(document['url'])
+                    except (ValueError,KeyError,TypeError):
+                        continue
+                    if url in pending and isinstance(document.get('raw_content'),str) and document['raw_content']:
+                        candidates[url]['content'] = document['raw_content'][:16000]
+                        candidates[url]['content_status'] = 'retrieved'
+                if any(not candidates[url]['content'] for url in pending):
+                    search_errors.append('일부 검색 자료의 원문을 확보하지 못했습니다. 검색 요약과 구분합니다.')
+                    pipeline_errors.append(PipelineError(phase='document_fetch',code='document_unavailable',message=search_errors[-1],provider='tavily'))
+            except Exception as exc:
+                record_error(exc,'document_fetch','tavily')
+                search_errors.append('검색된 자료의 원문 확보 요청이 실패했습니다.')
+                for url in pending:
+                    candidates[url]['content_status'] = 'unavailable'
         reviews = SourceReviews(sources=[])
         if candidates:
             try:
                 reviews = await self.llm.generate(TRACE, {'mentions': [m.model_dump() for m in mentions],
                     'sources': list(candidates.values())}, SourceReviews)
-            except Exception:
+            except Exception as exc:
+                record_error(exc,'source_review','gemini')
                 search_errors.append('출처 속성 정리를 완료하지 못했습니다. 원본 여부를 보류합니다.')
         sources = self.build_sources(mentions, list(candidates.values()), reviews,
-            request.metadata.published_at if request.metadata else None)
+            request.metadata.published_at if request.metadata else None, request.article_context)
+        for timeline in extracted.context_timeline:
+            timeline.source_ids = [s.id for s in sources if any(m.id in s.mention_ids and m.article_quote in timeline.article_quote for m in mentions)]
         for claim in claims:
             own_mentions = [m for m in mentions if claim.id in m.claim_ids]
             claim.mention_ids = [m.id for m in own_mentions]
@@ -195,6 +295,8 @@ class Analyzer:
                 claim.source_status = 'source_not_found' if search_status == 'completed' else 'unknown'
             claim.caution = claim_decision(claim, own_mentions, own_sources, search_status)
         decision = combine_decisions([c.caution for c in claims])
+        if request.article_context.body_truncated:
+            decision = combine_decisions([decision,Decision(status='caution',reasons=['본문 길이 제한으로 추출된 앞부분만 분석했습니다. 전체 기사를 추가 확인해 주세요.'])])
         if search_errors:
             decision = combine_decisions([decision, Decision(status='unknown', reasons=search_errors)])
         related = []
@@ -207,25 +309,37 @@ class Analyzer:
                         url = normalize_url(row['url'])
                     except (KeyError, TypeError, ValueError):
                         continue
-                    host = urlsplit(url).hostname
+                    publisher=publisher_name(url,row.get('publisher'))
+                    host = publisher or urlsplit(url).hostname
                     if host in hosts or url == normalize_url(request.url):
                         continue
                     hosts.add(host)
                     related.append(RelatedArticle(url=url, title=str(row.get('title') or ''),
-                        publisher=None, published_at=row.get('published_date'),
+                        publisher=publisher, published_at=row.get('published_date'),
+                        topic=request.title, summary=str(row.get('content') or '')[:400] or None,
                         differences_summary='검색 결과 요약(기사 본문 비교 전): ' + str(row.get('content') or '내용 차이 미확인')[:250]))
                     if len(related) == 3:
                         break
-            except Exception:
+            except Exception as exc:
+                record_error(exc,'related_search','tavily')
                 search_errors.append('관련 기사 검색이 실패했습니다. 원출처 검색 상태와는 별개입니다.')
         metadata = request.metadata or Article(url=request.url, title=request.title)
-        metadata = metadata.model_copy(update={'url': request.url, 'title': request.title or metadata.title})
+        metadata = Article.model_validate({**metadata.model_dump(mode='json'),'url':normalize_url(request.url),'title':request.title or metadata.title,
+            'event_time':extracted.event.time or metadata.event_time,'event_location':extracted.event.location or metadata.event_location})
+        states = {
+            'context':SectionState(status='ready' if extracted.context_timeline or extracted.event.description else 'empty',message=None if extracted.context_timeline or extracted.event.description else '기사에서 확인한 배경 정보가 없습니다.'),
+            'metadata':SectionState(status='ready'),
+            'claims':SectionState(status='ready' if claims else 'empty',message=None if claims else '원문과 연결된 주장을 추출하지 못했습니다.'),
+            'evidence':SectionState(status='error' if any(e.phase in ('source_search','document_fetch','source_review') for e in pipeline_errors) else 'partial' if not sources or any(s.unknown_fields for s in sources) else 'ready'),
+            'cautions':SectionState(status='partial' if decision.status=='unknown' else 'ready'),
+            'related':SectionState(status='error' if any(e.phase=='related_search' for e in pipeline_errors) else 'ready' if related else 'empty')}
         return ArticleAnalysis(article_id=key[:24], body_hash=body_hash(request.page_text),
-            analysis_status='partial' if search_errors or decision.status == 'unknown' or any(s.unknown_fields for s in sources) else 'complete',
-            article=metadata, one_line_summary=extracted.summary, claims=claims, evidence_mentions=mentions,
+            analysis_status='partial' if request.article_context.body_truncated or search_errors or decision.status == 'unknown' or any(s.unknown_fields for s in sources) else 'complete',
+            is_demo=self.mode=='mock', article=metadata, one_line_summary=extracted.summary, claims=claims, evidence_mentions=mentions,
             context_timeline=extracted.context_timeline, sources=sources, caution=decision, related_articles=related,
             headline_difference=extracted.headline_difference, search_status=search_status, search_errors=search_errors,
-            final_comment='기사의 근거와 원출처를 추적한 결과입니다. 출처 확인이나 주의사항 부재는 주장 진실성의 입증이 아닙니다.', analyzed_at=now_iso())
+            final_comment=('규칙·fixture 기반 시연용 분석입니다. ' if self.mode=='mock' else '')+'출처 확인이나 주의사항 부재는 주장 진실성의 입증이 아닙니다.', analyzed_at=now_iso(),
+            event=extracted.event, article_context=request.article_context, section_states=states, pipeline_errors=pipeline_errors)
 
     @staticmethod
     def clean_extraction(extracted, text):
@@ -239,6 +353,7 @@ class Analyzer:
             c.speaker = c.speaker if c.speaker and c.speaker in text else None
             c.source_ids, c.mention_ids, c.source_status = [], [], 'unknown'
             c.caution = Decision(reasons=['출처 분석 전입니다.'])
+            c.article_span = text_span(text,c.original_text)
             claims.append(c)
         ids = {c.id for c in claims}
         mentions, seen = [], set()
@@ -251,13 +366,22 @@ class Analyzer:
             m.source_label = m.source_label if m.source_label and m.source_label in m.article_quote else None
             m.document_title = m.document_title if m.document_title and m.document_title in text else None
             m.anonymous = bool(re.search(r'익명|관계자|소식통', m.article_quote))
+            m.article_span = text_span(text,m.article_quote)
             mentions.append(m)
         extracted.claims, extracted.evidence_mentions = claims, mentions
-        extracted.context_timeline = [t.model_copy(update={'description': t.article_quote}) for t in extracted.context_timeline if t.article_quote and t.article_quote in text]
+        extracted.context_timeline = [t.model_copy(update={'description':t.article_quote, 'article_span':text_span(text,t.article_quote),
+            'date':t.date if t.date in t.article_quote else '시점 미확인','source_ids':[]}) for t in extracted.context_timeline if t.article_quote and t.article_quote in text]
+        event = extracted.event
+        if not event.article_quote or event.article_quote not in text:
+            extracted.event = EventInfo()
+        else:
+            event.description = event.article_quote
+            event.time = event.time if event.time and event.time in event.article_quote else None
+            event.location = event.location if event.location and event.location in event.article_quote else None
         return extracted
 
     @staticmethod
-    def build_sources(mentions, candidates, reviews, reference_date=None):
+    def build_sources(mentions, candidates, reviews, reference_date=None, article_context=None):
         allowed_mentions = {m.id: m for m in mentions}
         # Duplicate reviews are not allowed to overwrite an earlier observation.
         by_id = {}
@@ -268,7 +392,8 @@ class Analyzer:
         for c in candidates:
             review = by_id.get(c['id'])
             facts = SourceFacts()
-            mids, status = [], 'unknown'
+            mids = [m.id for m in mentions if any(normalize_url(link.url)==c['url'] and link.text in m.article_quote for link in (article_context.cited_links if article_context else []))]
+            status = 'unknown'
             if review:
                 facts = SourceFacts(**{k: v for k, v in review.facts.model_dump().items()
                     if v and v['excerpt'] in c['content']})
@@ -277,7 +402,10 @@ class Analyzer:
                     if not mention:
                         continue
                     # A subject match alone does not establish an article citation.
-                    if mention.document_title:
+                    direct_link = any(normalize_url(link.url)==c['url'] and link.text in mention.article_quote for link in (article_context.cited_links if article_context else []))
+                    if direct_link:
+                        mids.append(mid)
+                    elif mention.document_title:
                         if mention.document_title in (c['title'] + c['content']):
                             mids.append(mid)
                     elif mention.source_label and facts.identity and mention.source_label in facts.identity.excerpt and mention.article_quote in c['content']:
@@ -287,13 +415,16 @@ class Analyzer:
                     if status == 'original_found' and not facts.identity:
                         status = 'unknown'
             decision, missing = source_decision(status, facts, next((allowed_mentions[i].source_kind for i in mids), 'unknown'), c['published_at'], reference_date)
+            decision.details = [CautionDetail(reason=r,source_ids=[c['id']]) for r in decision.reasons]
             sources.append(Source(id=c['id'], url=c['url'], title=c['title'],
                 publisher=facts.identity.excerpt if facts.identity else None,
+                author=facts.authorship.excerpt if facts.authorship else None,
                 published_at=c['published_at'], retrieved_at=c['retrieved_at'],
                 discovery='article_cited' if mids else 'external_found', mention_ids=list(dict.fromkeys(mids)),
                 source_kind=next((allowed_mentions[i].source_kind for i in mids), 'unknown'), original_status=status,
                 facts=facts, unknown_fields=missing, summary=('작성기관 표기: ' + facts.identity.excerpt + '. ' if facts.identity else '작성기관 표기를 확인하지 못했습니다. ')
-                    + ('추가 확인 항목: ' + ', '.join(missing) if missing else '공개된 출처 속성을 정리했습니다. 주장 진위의 판정은 아닙니다.'), caution=decision))
+                    + ('추가 확인 항목: ' + ', '.join(missing) if missing else '공개된 출처 속성을 정리했습니다. 주장 진위의 판정은 아닙니다.'), caution=decision,
+                content_status=c.get('content_status','retrieved' if c['content'] else 'snippet_only')))
         return sources
 
     async def selection(self, request):
@@ -302,15 +433,24 @@ class Analyzer:
         analysis = await self.analyze(AnalyzeRequest(**request.model_dump(exclude={'article_id', 'selected_text', 'surrounding_text'})))
         if request.article_id and request.article_id != analysis.article_id:
             raise ArticleInputError('현재 기사와 분석 ID가 다릅니다. 기사를 다시 분석해 주세요.')
-        matches = [c for c in analysis.claims if request.selected_text in c.original_text or c.original_text in request.selected_text]
-        if not matches and not analysis.is_demo:
+        matches = [c for c in analysis.claims if c.original_text in request.selected_text]
+        if not matches and len(request.selected_text)>=12:
+            partial=[c for c in analysis.claims if request.selected_text in c.original_text]
+            if len(partial)==1:
+                matches=partial
+        matched_ids=[c.id for c in matches]
+        if not matches:
             # A new selection is traced separately, preserving whole-article cached output.
             local = await self.analyze(AnalyzeRequest(url=request.url, title=request.title,
-                page_text=request.page_text, metadata=request.metadata), focus=request.selected_text)
-            matches, analysis_sources = local.claims, local.sources
+                page_text=request.page_text, metadata=request.metadata, article_context=request.article_context), focus=request.selected_text)
+            matches, analysis_sources, selection_errors = local.claims, local.sources, local.pipeline_errors
+            selection_id, mentions = local.article_id, local.evidence_mentions
         else:
-            analysis_sources = analysis.sources
+            analysis_sources, selection_errors = analysis.sources, analysis.pipeline_errors
+            selection_id, mentions = analysis.article_id, analysis.evidence_mentions
         source_ids = {i for c in matches for i in c.source_ids}
+        mention_ids = {i for c in matches for i in c.mention_ids}
         return SelectionAnalysis(article_id=analysis.article_id, selected_text=request.selected_text, is_demo=analysis.is_demo,
             claims=matches, sources=[s for s in analysis_sources if s.id in source_ids],
-            caution=combine_decisions([c.caution for c in matches]))
+            caution=combine_decisions([c.caution for c in matches]), pipeline_errors=selection_errors,
+            analysis_id=selection_id, matched_claim_ids=matched_ids, evidence_mentions=[m for m in mentions if m.id in mention_ids])

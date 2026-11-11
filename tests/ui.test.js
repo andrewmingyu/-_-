@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
-import { renderAnalysis, renderPreview, renderSelection, safeLink } from '../newscheck 4/shared/view.js';
+import { renderAnalysis, renderAnalysisState, renderPreview, renderSelection, safeLink } from '../newscheck 4/shared/view.js';
 import { validateAnalysis, validateSelection, validatePreview, requestAnalysis, backendUrl } from '../newscheck 4/shared/api.js';
 const fixture=JSON.parse(fs.readFileSync(new URL('../newscheck 4/data/demo.json',import.meta.url),'utf8'));
 test('six independent accessible controls keep all other cards open and survive refresh',()=>{
@@ -66,6 +66,26 @@ test('backend URL accepts local HTTP or HTTPS and rejects credentials/non-HTTP',
   assert.equal(backendUrl('https://newscheck.example'),'https://newscheck.example');
   for(const url of ['http://remote.example','file:///secret','https://user:pass@example.com','https://example.com/path']) assert.throws(()=>backendUrl(url));
 });
+test('six cards display loading, errors and retry while preserving page metadata',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
+  renderAnalysisState(root,fixture.article,'loading','분석 대기');
+  assert.equal(root.querySelectorAll('[data-toggle]').length,6);
+  assert.equal([...root.querySelectorAll('.section-state')].filter(e=>e.textContent.includes('분석 중')).length,5);
+  renderAnalysisState(root,fixture.article,'error','서버 오류 <script>');
+  assert.equal(root.querySelectorAll('[data-retry]').length,1);
+  assert.equal([...root.querySelectorAll('.section-state')].filter(e=>e.textContent.includes('처리 실패')).length,5);
+  assert.equal(root.querySelector('script'),null);
+  assert.ok(root.textContent.includes(fixture.article.publisher));
+});
+test('objective caution reasons retain source connections and unknown references are rejected',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
+  const a=structuredClone(fixture);
+  a.caution.details=[{reason:'작성 기관의 이해관계 관련 문구 확인',source_ids:[a.sources[0].id],claim_ids:[a.claims[0].id]}];
+  renderAnalysis(root,a);root.querySelector('[data-toggle="cautions"]').click();
+  assert.ok(root.querySelector('#details-cautions').textContent.includes(a.sources[0].title));
+  assert.equal(validateAnalysis(a),a);
+  a.caution.details[0].source_ids=['invented'];assert.throws(()=>validateAnalysis(a),/참조/);
+});
 test('all API surfaces reject missing demo markers and malformed source states',()=>{
   const preview={article_id:fixture.article_id,is_demo:true,summary:fixture.one_line_summary,major_evidence:fixture.evidence_mentions,sources:fixture.sources,headline_difference:fixture.headline_difference,one_line_caution:'출처 확인 필요'};
   const selection={article_id:fixture.article_id,selected_text:'문장',is_demo:true,claims:fixture.claims,sources:fixture.sources,caution:fixture.caution};
@@ -80,7 +100,7 @@ test('HTTP rate limits and network failures remain errors, never source-not-foun
   globalThis.chrome={storage:{local:{get:async()=>({})}}};
   try{
     await assert.rejects(requestAnalysis('/api/preview',{},async()=>({ok:false,status:429})),/429/);
-    await assert.rejects(requestAnalysis('/api/preview',{},async()=>{throw new Error('network unavailable');}),/network unavailable/);
+    await assert.rejects(requestAnalysis('/api/preview',{},async()=>{throw new Error('network unavailable');}),error=>error.code==='network_error');
   }finally{globalThis.chrome=previous;}
 });
 test('settings preserve the server port but request a valid host permission and clear legacy keys only on click',async()=>{

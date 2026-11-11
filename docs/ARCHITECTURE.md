@@ -10,7 +10,7 @@
 | 패널 | sidepanel/*, shared/view.js | 한 줄 요약·6개 독립 카드·표현 차이 |
 | 설정·클라이언트 | options/*, shared/api.js | 서버 주소/권한, 응답 검사; 브라우저 키 사용 안 함 |
 | 데이터 계약 | shared/types.ts, backend/app/models.py | TS 입출력 타입 및 Pydantic 검증 |
-| API | backend/app/main.py | health/analyze/preview/claims-check, 422/502 |
+| API | backend/app/main.py | health/analyze/preview/claims-check/기존 결과 조회, 구조화된 오류 |
 | AI·검색 | clients.py, prompts.py | Gemini 구조화·Tavily 실제 자료 검색 |
 | 출처 분석·캐시 | service.py | 원문/ID 검사, 출처 상태·주의사항, 결과 공유 |
 
@@ -49,12 +49,19 @@ LLM_MODEL, 스키마 버전, 선택 focus로 구성한다. 같은 키의 진행 
 기본 TTL은 900초, 최대 128건이며 메모리에서만 유지한다. 검색 또는 출처 정리 오류가 있으면 결과를 캐시하지 않는다.
 선택이 기존 주장과 겹치면 그 결과를 재사용한다. 새 선택은 전체 본문 문맥과 focus로 별도 키를 만들고 기사 전체 결과를 덮어쓰지 않는다.
 클라이언트가 보내는 surrounding_text는 계약에 존재하지만 서버의 권위 있는 문맥은 page_text 전체이며 별도 외부 텍스트를 합치지 않는다.
-모드 mock은 요청별 실제 분석 대신 고정 fixture를 반환하므로 article_id/body_hash도 시연용 고정값이다.
+모드 mock도 동일 Analyzer에서 입력 기사·본문 해시를 사용하되 공급자만 MockLLM/MockSearch로 바꾼다. 정적 UI ?demo의 고정 fixture는 별도이다.
+워커 ArticleInputCache는 정규화 URL별 입력·analysis ID를 30초/최대 64건 기억하고 GET 기존 결과 조회 및 본문 SHA-256 검사를 통과한 경우에만 Hover에 재사용한다. 차가운 Hover의 HTML도 30초/64건·동시 fetch 중복 방지를 적용한다.
+서버 cache key는 ArticleContext·정규화 메타 URL·data_version=source-tracing-v1.1도 포함한다.
 
 ## 실패와 제한
 - 요청 스키마/본문/선택/분석 ID 오류: 422.
-- Gemini·출처 스키마 처리 오류 등 upstream 실패: 내부 원문을 숨긴 502.
+- 전체 공급자 실패: 설정 누락 503, 요청 제한 429, 시간 초과 504, 그 밖의 응답/연결 오류 502. code/provider/retry_after_seconds를 제공하고 내부 원문은 숨긴다.
 - 개별 원출처 검색 실패: partial 결과 + search_status=failed; source_not_found로 바꾸지 않는다.
 - 출처 속성 정리 실패/관련 기사 검색 실패는 search_errors에 보존한다.
 - 클라이언트 timeout은 120초, Gemini 45초, Tavily 요청별 25초다. 연속 단계 총시간이 클라이언트 timeout보다 길어질 수 있다.
 - 자동 backoff/서버 비용 제한/지속 캐시/분산 캐시는 후속 기능이다.
+
+## 추가 연결 경로
+검색 결과의 원문 누락은 고정 Tavily extract endpoint로만 보강하며 URL 후보 허용 목록을 적용한다. 기사 내부 링크는 원본 관계가 아닌 기사 인용 연결의 근거로만 사용한다.
+섹션별 상태와 pipeline_errors, 이유별 주의사항 참조, 사건/타임라인 출처가 같은 ArticleAnalysis에 포함된다.
+scripts/integration-smoke.mjs는 실제 worker와 HTTP 서버를 연결하되 Chrome API·네이버 페이지를 어댑터로 대체한다. 실제 설치 검사는 여전히 별도다.

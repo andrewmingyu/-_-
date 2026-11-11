@@ -1,5 +1,5 @@
 # 뉴스체크 AI — 출처 추적 요구사항 명세서
-기준: 2026-11-11. 최신 사용자 지시를 반영한 source-tracing-v1 계약.
+기준: 2026-11-11. 최신 사용자 지시를 반영한 source-tracing-v1 경로·기본 계약을 유지하고 data_version=source-tracing-v1.1을 추가한 연결 보완.
 이 문서가 이전 팩트체크 설계와 충돌하면 이 문서를 우선한다.
 
 ## 1. 목적과 금지 사항
@@ -48,7 +48,7 @@ Gemini·Tavily는 서버에서만 호출한다. 기존 브라우저 키는 읽�
 
 출처 속성: 정체/작성기관, 원자료·재인용, 전문성, 정보 접근 경로, 작성 시점,
 공개 범위, 조사 방법, 이해관계, 자료 독립성.
-각 속성은 원문 excerpt 또는 null이다. null은 '없다'가 아니라 '확인하지 못했다'이다.
+작성자(authorship)를 포함한 10개 속성을 처리한다. 각 속성은 원문 excerpt 또는 null이다. null은 '없다'가 아니라 '확인하지 못했다'이다.
 원자료 판별은 기사 자료명/기관 연결 및 원문상의 작성·발표 관계를 함께 확인해야 한다.
 모델이 만든 새로운 URL·출처 ID는 저장하지 않는다. 독립 자료의 개수를 임의로 계산하지 않는다.
 
@@ -89,12 +89,13 @@ Hover: 요약, 주요 근거, 출처, 제목·본문 표현 차이, 한 줄 주�
 서버 오류·본문 미확보·미지원 링크는 명확히 안내하고 사용자의 복사/선택 동작을 유지한다.
 
 ## 8. API
-- GET /health: 모드 및 스키마 버전.
+- GET /health: 모드 및 스키마·데이터 버전.
+- GET /api/articles/{article_id}?url=...: 만료 전 기존 결과 조회; 없거나 다른 URL이면 404.
 - POST /api/articles/analyze: AnalyzeRequest → ArticleAnalysis.
 - POST /api/preview: 같은 AnalyzeRequest → Preview.
 - POST /api/claims/check: SelectionRequest → SelectionAnalysis.
 입력은 url, title, page_text, metadata, refresh. 선택은 selected_text, surrounding_text, article_id 추가.
-공통 결과는 기사/주장/evidence_mentions/sources/caution/related_articles/search_status/search_errors/analyzed_at.
+공통 결과는 기존 필드에 event/article_context/section_states/pipeline_errors/data_version을 기본값 있는 필드로 추가한다.
 정확한 필드 및 enum은 models.py, shared/types.ts 및 docs/api.schema.json 참조.
 모델 extra=forbid, 알 수 없는 참조 ID 거부, 오류 응답에 키/공급자 원문 오류 노출 금지.
 백엔드는 임의 URL을 직접 fetch하지 않는다. Hover fetch는 확장 서비스 워커에서 네이버 HTTPS 기사로 제한.
@@ -109,236 +110,225 @@ mock UI → 실제 기사 추출/API → Gemini 구조화 → Tavily 원출처 �
 npm test, npm run typecheck, npm run build 및 pytest를 실행하고 실제 결과를 보고한다.
 실제 Chrome 로드와 실제 API 품질은 자동 테스트와 구분하여 수동 검토한다.
 
-## 10. 개발 기준 버전의 기능 현황
 
-완료는 명시된 범위의 구현과 검증 완료를 뜻합니다. 실제 API/설치 검증이 부족한 항목은 별도로 표시합니다.
+## 10. 현재 보완 작업 범위
+기준 main 33b9b0a에서 기존 코드를 점검했다. JavaScript/FastAPI와 6개 카드를 보존하고 부족한 연결만 보완한다.
+아래 초기 상태는 요청된 네 분류를 사용한다. 결과의 기본 구현 및 연결 완료는 Mock/대체 공급자/합성 DOM 범위이며 실제 API·설치 품질 완료를 뜻하지 않는다.
+feature/core-flow-integration에서 기본 구현·연결 보완을 진행했다. 후속 사용자 요청에 따라 해당 변경을 커밋·Push하고 main 대상 PR로 검토한다. Merge·담당자 배정·Issues 생성은 이번 범위에 포함하지 않는다.
 
-| ID | 기능 | 상태 | 근거 |
+| ID | 기능 | 초기 점검 | 현재 상태 |
 |---|---|---|---|
-| F01 | 뉴스 제목 Hover 감지 | 추가 검증 필요 | newscheck 4/content.js; scripts/browser-smoke.mjs |
-| F02 | Hover 요약 팝업 | 추가 검증 필요 | content.js; shared/view.js; /api/preview; 브라우저 시연 검사 |
-| F03 | 네이버 뉴스 기사 추출 | 추가 검증 필요 | lib/extract.js; 브라우저 합성 기사 검사 |
-| F04 | 기사 기본 정보 수집 | 일부 구현 | lib/extract.js; shared/article.js |
-| F05 | 우측 상세 분석 패널 | 추가 검증 필요 | background.js; sidepanel/*; headless 화면 검사 |
-| F06 | 배경 및 맥락 카드 | 일부 구현 | shared/view.js; service.py clean_extraction |
-| F07 | 기사 기본 정보 카드 | 일부 구현 | shared/view.js; shared/article.js |
-| F08 | 기사의 주장 카드 | 추가 검증 필요 | shared/view.js; service.py; 프롬프트 |
-| F09 | 내용의 근거 카드 | 추가 검증 필요 | shared/view.js; models.py; 출처 단위 테스트 |
-| F10 | 주의할 것 카드 | 추가 검증 필요 | shared/view.js; source_decision/claim_decision |
-| F11 | 비슷한 주제의 기사 카드 | 일부 구현 | service.py related; shared/view.js |
-| F12 | 카드별 독립 더보기·접기 | 완료 | tests/ui.test.js; scripts/browser-smoke.mjs |
-| F13 | 문장 드래그 분석 | 추가 검증 필요 | content.js; Analyzer.selection; 브라우저/API 검사 |
-| F14 | Gemini 핵심 주장 추출 | 추가 검증 필요 | clients.py; prompts.py; service.py; 공급자 대체 검사 |
-| F15 | 기사 내부 근거 추출 | 추가 검증 필요 | Extraction/Mention; clean_extraction |
-| F16 | Tavily 원출처 검색 | 추가 검증 필요 | clients.py Tavily; service.py; FakeSearch 검사 |
-| F17 | 원출처 확인 상태 분석 | 추가 검증 필요 | build_sources; 출처 상태 테스트 |
-| F18 | 출처 공신력 분석 | 일부 구현 | SourceFacts; build_sources; source_decision |
-| F19 | 객관적인 주의사항 생성 | 추가 검증 필요 | source_decision/claim_decision; 규칙 테스트 |
-| F20 | 기사별 분석 결과 캐시 | 완료 | Analyzer.cache_key/analyze; 캐시 테스트 |
-| F21 | 화면 간 결과 공유 | 추가 검증 필요 | main.py; selection; HTTP smoke |
-| F22 | API 오류·요청 제한 처리 | 일부 구현 | main.py; shared/api.js; 관련 오류 테스트 |
-| F23 | Mock 분석 모드 | 완료 | data/demo.json; mock _run; UI/API smoke |
-| F24 | 실제 Gemini·Tavily 연동 | 추가 검증 필요 | clients.py; backend/.env.example; live 호출 미실행 |
-| F25 | 네이버 실제 환경 통합 테스트 | 미구현 | README; docs/VALIDATION.md; TODO P0/P1 |
+| F01 | 뉴스 제목 Hover 감지 | 구현 및 연결 완료 | 기본 구현 및 연결 완료 |
+| F02 | Hover 미리보기·캐시 조회 | 기본 구현은 있으나 연결 또는 처리가 부족 | 기본 구현 및 연결 완료 |
+| F03 | 네이버 기사 추출 | 일부 코드만 존재 | 기본 구현 및 연결 완료 |
+| F04 | 기사 기본 정보·사건 정보 | 일부 코드만 존재 | 기본 구현 및 연결 완료 |
+| F05 | 우측 상세 분석 패널 | 구현 및 연결 완료 | 기본 구현 및 연결 완료 |
+| F06 | 배경 및 맥락 카드 | 일부 코드만 존재 | 기본 구현 및 연결 완료 |
+| F07 | 기사 기본 정보 카드 | 구현 및 연결 완료 | 기본 구현 및 연결 완료 |
+| F08 | 기사의 주장 카드 | 구현 및 연결 완료 | 기본 구현 및 연결 완료 |
+| F09 | 내용의 근거 카드 | 기본 구현은 있으나 연결 또는 처리가 부족 | 기본 구현 및 연결 완료 |
+| F10 | 주의할 것 카드 | 기본 구현은 있으나 연결 또는 처리가 부족 | 기본 구현 및 연결 완료 |
+| F11 | 비슷한 주제의 기사 카드 | 일부 코드만 존재 | 기본 구현 및 연결 완료 |
+| F12 | 6개 독립 더보기·접기 | 구현 및 연결 완료 | 기본 구현 및 연결 완료 |
+| F13 | 문장 선택 분석 | 기본 구현은 있으나 연결 또는 처리가 부족 | 기본 구현 및 연결 완료 |
+| F14 | Gemini 기사 구조 분석 | 기본 구현은 있으나 연결 또는 처리가 부족 | 실제 API 검증 필요 |
+| F15 | 기사 내부 근거 추출 | 일부 코드만 존재 | 실제 API 검증 필요 |
+| F16 | Tavily 검색·원문 확보 | 기본 구현은 있으나 연결 또는 처리가 부족 | 실제 API 검증 필요 |
+| F17 | 원출처 상태 | 구현 및 연결 완료 | 실제 API 검증 필요 |
+| F18 | 출처 공신력 관련 관찰 | 일부 코드만 존재 | 실제 API 검증 필요 |
+| F19 | 객관적인 주의사항 | 기본 구현은 있으나 연결 또는 처리가 부족 | 기본 구현 및 연결 완료 |
+| F20 | 기사 캐시·동시 중복 방지 | 구현 및 연결 완료 | 기본 구현 및 연결 완료 |
+| F21 | 세 화면 결과 공유 | 기본 구현은 있으나 연결 또는 처리가 부족 | 기본 구현 및 연결 완료 |
+| F22 | 오류·분석 상태 | 일부 코드만 존재 | 기본 구현 및 연결 완료 |
+| F23 | 입력 기반 Mock 전체 흐름 | 기본 구현은 있으나 연결 또는 처리가 부족 | 기본 구현 및 연결 완료 |
+| F24 | Live 공급자 연결 준비 | 기본 구현은 있으나 연결 또는 처리가 부족 | 실제 API 검증 필요 |
+| F25 | 설치된 네이버 통합 검증 | 미구현 | 일부 구현 |
 
-## 11. 기능별 요구사항
+## 11. 파일·계약·검증 근거와 남은 범위
 
 ### F01 뉴스 제목 Hover 감지
-- 목적: 기사 클릭 전 빠른 탐색
-- 입력: 네이버 기사 링크·mouseover/out
-- 동작·출력: 500ms 대기 후 수집 요청, 이탈 시 취소
-- 예외·제약: 미지원 URL 무시·늦은 응답 폐기
-- 완료 기준: 실제 목록에서 의도한 링크만 감지하고 클릭을 방해하지 않음
-- 현재 상태·근거: 추가 검증 필요; newscheck 4/content.js; scripts/browser-smoke.mjs
+- 구현 파일·함수: content.js mouseover/out
+- 공통 계약·동작: 링크 URL·500ms 지연
+- 수행한 검증 근거: browser-smoke / integration B
+- 남은 범위: 실제 목록·동적 DOM 성능 검증
+- 현재 상태: 기본 구현 및 연결 완료
 
-### F02 Hover 요약 팝업
-- 목적: 읽을 기사 빠르게 파악
-- 입력: 확보한 기사 본문·Preview
-- 동작·출력: 요약·주요 근거·출처·표현 차이·주의사항 표시
-- 예외·제약: 본문 미확보/통신 오류를 안내하고 제목 요약으로 대체하지 않음
-- 완료 기준: Chrome 설치 상태에서 본문 기반 결과가 표시됨
-- 현재 상태·근거: 추가 검증 필요; content.js; shared/view.js; /api/preview; 브라우저 시연 검사
+### F02 Hover 미리보기·캐시 조회
+- 구현 파일·함수: background.dispatchMessage / ArticleInputCache / renderPreview
+- 공통 계약·동작: Preview claims·body_hash·data_version
+- 수행한 검증 근거: integration B의 수집 전 GET 조회/캐시 miss
+- 남은 범위: 실제 네이버 redirect·로딩 시간
+- 현재 상태: 기본 구현 및 연결 완료
 
-### F03 네이버 뉴스 기사 추출
-- 목적: 분석할 실제 기사 수집
-- 입력: 현재 DOM 또는 fetch한 HTML
-- 동작·출력: 전용 selector·메타 태그·일반 문단 후보로 본문 추출
-- 예외·제약: 본문 길이 부족 시 실패; 본문 12,000자 제한
-- 완료 기준: 실제 네이버 기사 표본의 본문·제목 일치 수동 확인
-- 현재 상태·근거: 추가 검증 필요; lib/extract.js; 브라우저 합성 기사 검사
+### F03 네이버 기사 추출
+- 구현 파일·함수: extractArticle
+- 공통 계약·동작: 제목·본문·JSON-LD·양쪽 datestamp·cited_links·quotations
+- 수행한 검증 근거: extraction.test.js / integration A
+- 남은 범위: 실제 대표 DOM 표본과 긴 기사 보완
+- 현재 상태: 기본 구현 및 연결 완료
 
-### F04 기사 기본 정보 수집
-- 목적: 출처·시점 맥락 제공
-- 입력: DOM·meta·원문 링크
-- 동작·출력: 언론사·기자·보도/수정일·URL 수집
-- 예외·제약: 없는 값은 null; 사건일·장소·기자 약력은 자동 수집하지 않음
-- 완료 기준: 지원 정보 정확성 확인 및 사건/기자 보강 항목 별도 검증
-- 현재 상태·근거: 일부 구현; lib/extract.js; shared/article.js
+### F04 기사 기본 정보·사건 정보
+- 구현 파일·함수: extractArticle / articleRequest / clean_extraction
+- 공통 계약·동작: ArticleContext·EventInfo·Article metadata
+- 수행한 검증 근거: Naver fixture / Python event 검사
+- 남은 범위: 명시되지 않은 사건·기자 약력은 미확인
+- 현재 상태: 기본 구현 및 연결 완료
 
 ### F05 우측 상세 분석 패널
-- 목적: 기사를 떠나지 않고 출처 확인
-- 입력: 툴바 클릭·현재 탭·ArticleAnalysis
-- 동작·출력: MV3 패널에 분석 상태·카드·종합 안내 표시
-- 예외·제약: 미지원 페이지·서버 실패·탭 변경 시 이전 결과 숨김
-- 완료 기준: 설치된 확장 서비스 워커·권한·탭 전환 정상
-- 현재 상태·근거: 추가 검증 필요; background.js; sidepanel/*; headless 화면 검사
+- 구현 파일·함수: sidepanel.js / renderAnalysisState
+- 공통 계약·동작: ArticleAnalysis·section_states
+- 수행한 검증 근거: integration A/서버 종료
+- 남은 범위: 설치된 MV3 권한·수명주기
+- 현재 상태: 기본 구현 및 연결 완료
 
 ### F06 배경 및 맥락 카드
-- 목적: 사건의 시간순 이해
-- 입력: context_timeline
-- 동작·출력: 기사에 명시된 타임라인 최대 3개 기본 표시, 상세 펼침
-- 예외·제약: 없으면 확인된 정보 없음; 기사 밖 배경 생성 안 함
-- 완료 기준: 원문 내부 배경 정확성 확인; 외부 맥락 추적은 별도 개발
-- 현재 상태·근거: 일부 구현; shared/view.js; service.py clean_extraction
+- 구현 파일·함수: EventInfo / TimelineItem / sectionData
+- 공통 계약·동작: 핵심 사건·원문 위치·타임라인 source_ids
+- 수행한 검증 근거: integration D
+- 남은 범위: 기사 밖 배경 자료 확장·품질
+- 현재 상태: 기본 구현 및 연결 완료
 
 ### F07 기사 기본 정보 카드
-- 목적: 누가 언제 쓴 기사인지 확인
-- 입력: article 메타데이터
-- 동작·출력: 기본 정보 및 수정일·원문·프로필 상세 표시
-- 예외·제약: 자동 수집 없는 사건/기자 정보는 미확인
-- 완료 기준: 입력된 실제 정보 정확히 표시; 보강 수집은 별도
-- 현재 상태·근거: 일부 구현; shared/view.js; shared/article.js
+- 구현 파일·함수: sectionData metadata
+- 공통 계약·동작: 작성/수정·사건 날짜/장소·원문
+- 수행한 검증 근거: integration A
+- 남은 범위: 기자 공개 프로필의 추가 수집
+- 현재 상태: 기본 구현 및 연결 완료
 
 ### F08 기사의 주장 카드
-- 목적: 핵심 내용과 발언 구분
-- 입력: claims
-- 동작·출력: 기본 주장 2개, 상세 원문·발언자·유형·본문 위치 버튼
-- 예외·제약: 없는 주장/발언자는 생성하지 않음
-- 완료 기준: 실제 추출 결과가 원문 의미·한정 표현을 보존
-- 현재 상태·근거: 추가 검증 필요; shared/view.js; service.py; 프롬프트
+- 구현 파일·함수: sectionData claims / findQuote
+- 공통 계약·동작: 원문·유형·발언자·article_span
+- 수행한 검증 근거: JS 카드 회귀 / Python span 검사
+- 남은 범위: 실제 LLM의 의미·발언 귀속 평가
+- 현재 상태: 기본 구현 및 연결 완료
 
 ### F09 내용의 근거 카드
-- 목적: 기사 근거와 원출처 탐색
-- 입력: evidence_mentions·sources
-- 동작·출력: 출처 표기·원본 상태·공신력 관련 관찰과 상세 속성 표시
-- 예외·제약: 외부 발견 자료를 기사 인용과 구분; 미확인 속성 보존
-- 완료 기준: 실제 원문 링크·인용·출처 관계 수동 검토 통과
-- 현재 상태·근거: 추가 검증 필요; shared/view.js; models.py; 출처 단위 테스트
+- 구현 파일·함수: build_sources / sourceDetails
+- 공통 계약·동작: 원출처·작성자 포함 10개 facts·content_status
+- 수행한 검증 근거: integration D / snippet 보강 테스트
+- 남은 범위: 원자료 관계·자격 관찰 품질 평가
+- 현재 상태: 기본 구현 및 연결 완료
 
 ### F10 주의할 것 카드
-- 목적: 불확실한 출처·해석을 알아보기
-- 입력: caution·claims·sources·search_errors
-- 동작·출력: 기본 주의사항과 5개 상세 범주 표시
-- 예외·제약: 없음/정보 부족 구분; 진위 판정 없음
-- 완료 기준: 실제 기사에서 객관적 이유가 빠짐없이 표시됨
-- 현재 상태·근거: 추가 검증 필요; shared/view.js; source_decision/claim_decision
+- 구현 파일·함수: claim_decision / combine_decisions / decisionDetails
+- 공통 계약·동작: caution.details의 source_ids·claim_ids
+- 수행한 검증 근거: JS/Python 허구 참조 거부 / integration D
+- 남은 범위: 실제 표본의 과잉·누락 경고
+- 현재 상태: 기본 구현 및 연결 완료
 
 ### F11 비슷한 주제의 기사 카드
-- 목적: 관련 보도의 관점 탐색
-- 입력: 뉴스 검색 결과
-- 동작·출력: 최대 3건·시점·검색 요약 표시, 발행자/호스트 중복 억제
-- 예외·제약: 전문 비교·독립성 확인을 했다고 표시하지 않음
-- 완료 기준: 동일 사건 추천 품질 검토 및 전문 비교는 후속
-- 현재 상태·근거: 일부 구현; service.py related; shared/view.js
+- 구현 파일·함수: publisher_name / related / sectionData
+- 공통 계약·동작: topic·summary·실제 검색 URL·시점
+- 수행한 검증 근거: 언론사 도메인 별칭/중복 회귀
+- 남은 범위: 동일 사건 추천·전문 비교는 후속
+- 현재 상태: 기본 구현 및 연결 완료
 
-### F12 카드별 독립 더보기·접기
-- 목적: 원하는 정보만 확장
-- 입력: 6개 버튼·expanded Set
-- 동작·출력: 해당 카드만 토글, 같은 분석 갱신 시 상태 유지
-- 예외·제약: 새 article_id에서는 초기화, 키보드·aria 지원
-- 완료 기준: 6개 동시 확장·개별 접기·Enter/Space·새로고침 검사 통과
-- 현재 상태·근거: 완료; tests/ui.test.js; scripts/browser-smoke.mjs
+### F12 6개 독립 더보기·접기
+- 구현 파일·함수: renderAnalysis expanded Set
+- 공통 계약·동작: 네이티브 button·aria
+- 수행한 검증 근거: 기존 UI/브라우저 회귀 그대로 유지
+- 남은 범위: 실제 화면낭독기 검증
+- 현재 상태: 기본 구현 및 연결 완료
 
-### F13 문장 드래그 분석
-- 목적: 궁금한 문장의 유형·출처 탐색
-- 입력: 선택 2~3,000자·본문·주변 문맥
-- 동작·출력: 버튼 클릭 후 기존 주장 재사용 또는 본문 문맥으로 별도 추적
-- 예외·제약: 본문 밖 선택·미지원 길이 무시, 기존 복사 유지
-- 완료 기준: 실제 선택 범위와 분석 대상 일치·근거 관계 검토
-- 현재 상태·근거: 추가 검증 필요; content.js; Analyzer.selection; 브라우저/API 검사
+### F13 문장 선택 분석
+- 구현 파일·함수: content mouseup / Analyzer.selection
+- 공통 계약·동작: 부모 article_id·별도 analysis_id·matched_claim_ids·근거
+- 수행한 검증 근거: integration C 기존/새 선택
+- 남은 범위: 복합·중복·부분 문장 정확도
+- 현재 상태: 기본 구현 및 연결 완료
 
-### F14 Gemini 핵심 주장 추출
-- 목적: 기사 핵심 주장 1~3개 구조화
-- 입력: 제목·본문·선택 focus
-- 동작·출력: 스키마 JSON 생성 후 정확한 원문 포함 여부 검사
-- 예외·제약: 모델/키/응답 실패 502, 원문 밖 주장 제거
-- 완료 기준: 실제 Gemini 결과를 원문과 대조한 표본 평가
-- 현재 상태·근거: 추가 검증 필요; clients.py; prompts.py; service.py; 공급자 대체 검사
+### F14 Gemini 기사 구조 분석
+- 구현 파일·함수: Gemini.generate / EXTRACT
+- 공통 계약·동작: Extraction event·claims·근거·timeline
+- 수행한 검증 근거: 실제 SDK 설정 객체 + 대체 응답
+- 남은 범위: 실제 모델·계정·추출 품질
+- 현재 상태: 실제 API 검증 필요
 
 ### F15 기사 내부 근거 추출
-- 목적: 기사 자체의 근거를 구별
-- 입력: 기사 본문
-- 동작·출력: 근거 종류·기사 인용·기관/자료명·주장 연결 추출
-- 예외·제약: 없는 인용/기관/자료명 제거
-- 완료 기준: 실제 기사에서 인용과 근거 귀속 정확도 평가
-- 현재 상태·근거: 추가 검증 필요; Extraction/Mention; clean_extraction
+- 구현 파일·함수: clean_extraction / Mention
+- 공통 계약·동작: 자료 종류·원문·주장 연결·본문 위치
+- 수행한 검증 근거: Mock D·인용/발언자 거부 회귀
+- 남은 범위: 실제 연구/인터뷰 등 유형별 품질
+- 현재 상태: 실제 API 검증 필요
 
-### F16 Tavily 원출처 검색
-- 목적: 기사에 제시된 원자료 탐색
-- 입력: 근거 언급 검색어 최대 3개
-- 동작·출력: 질의별 최대 5건·원문 내용, URL 정규화·중복 제거
-- 예외·제약: 요청 실패와 빈 결과 분리, snippet만으로 원본 확정 금지
-- 완료 기준: 실제 Tavily URL/문서 원문·발행정보 확인
-- 현재 상태·근거: 추가 검증 필요; clients.py Tavily; service.py; FakeSearch 검사
+### F16 Tavily 검색·원문 확보
+- 구현 파일·함수: Tavily.search/extract
+- 공통 계약·동작: 검색 후보만 원문 보강·단계 오류
+- 수행한 검증 근거: MockTransport / 허구 URL 거부
+- 남은 범위: 실제 raw_content·발행일·한도
+- 현재 상태: 실제 API 검증 필요
 
-### F17 원출처 확인 상태 분석
-- 목적: 원본·재인용·미발견·미확인 구분
-- 입력: 검색 ID·실제 원문·SourceReview
-- 동작·출력: 허용 ID·정확한 인용·자료 연결을 검사하고 상태 저장
-- 예외·제약: 허구 ID/인용 제거, 검색 실패는 unknown
-- 완료 기준: 실제 원자료 관계 평가와 오인 사례 검토
-- 현재 상태·근거: 추가 검증 필요; build_sources; 출처 상태 테스트
+### F17 원출처 상태
+- 구현 파일·함수: build_sources
+- 공통 계약·동작: 기존 상태 4종 유지
+- 수행한 검증 근거: 원본/재인용/실패/미발견 회귀
+- 남은 범위: 실제 원본 관계 수동 대조
+- 현재 상태: 실제 API 검증 필요
 
-### F18 출처 공신력 분석
-- 목적: 출처 속성과 검증 가능성 설명
-- 입력: 출처 원문·발행일
-- 동작·출력: 9개 속성의 원문 excerpt/null·미확인 항목·짧은 설명
-- 예외·제약: 전문성/독립성/이해관계 부재를 추정하지 않음
-- 완료 기준: 현재 관찰 구조 검증 및 외부 자격/기관 정보 확인 방식 후속 검토
-- 현재 상태·근거: 일부 구현; SourceFacts; build_sources; source_decision
+### F18 출처 공신력 관련 관찰
+- 구현 파일·함수: SourceFacts / SourceReview / source_decision
+- 공통 계약·동작: 작성기관·작성자·전문성 등 원문 10개 항목
+- 수행한 검증 근거: Mock D·정확한 인용·미확인 검사
+- 남은 범위: 독립 자격 검증은 별도, 실제 관찰 품질 평가
+- 현재 상태: 실제 API 검증 필요
 
-### F19 객관적인 주의사항 생성
-- 목적: 추가 확인할 출처 정보 안내
-- 입력: 출처 상태·관찰·유형·날짜
-- 동작·출력: 익명/재인용/방법 미확인/이해관계/날짜/해석 이유 생성
-- 예외·제약: none_identified를 진실로 해석하지 않음
-- 완료 기준: 실제 기사에서 과잉·누락 경고를 수동 평가
-- 현재 상태·근거: 추가 검증 필요; source_decision/claim_decision; 규칙 테스트
+### F19 객관적인 주의사항
+- 구현 파일·함수: source_decision / claim_decision
+- 공통 계약·동작: 3개 상태·이유·근거 연결·본문 잘림 안내
+- 수행한 검증 근거: 규칙 테스트 / UI 연결
+- 남은 범위: 실제 표본의 이유 적절성
+- 현재 상태: 기본 구현 및 연결 완료
 
-### F20 기사별 분석 결과 캐시
-- 목적: 같은 분석의 중복 호출 감소
-- 입력: 정규화 URL·본문 해시·메타·모델·모드·focus
-- 동작·출력: 메모리 TTL 기본 900초, 최대 128건, 진행 중 요청 공유
-- 예외·제약: 검색/속성 오류 결과 미캐시; 강제 갱신·서버 재시작 고려
-- 완료 기준: 동시 요청·본문 변경·refresh·실패 후 재시도 검사 통과
-- 현재 상태·근거: 완료; Analyzer.cache_key/analyze; 캐시 테스트; TTL/용량 검증은 후속 TODO
+### F20 기사 캐시·동시 중복 방지
+- 구현 파일·함수: cache_key / analyze / lookup
+- 공통 계약·동작: 정규화 URL·본문·문맥·data_version·focus
+- 수행한 검증 근거: TTL/128건/동시/수정/추적 query 회귀
+- 남은 범위: 지속·분산 캐시·장기 성능
+- 현재 상태: 기본 구현 및 연결 완료
 
-### F21 화면 간 결과 공유
-- 목적: Hover·패널·선택 결과 일관성
-- 입력: 동일 정규화 입력 및 article_id
-- 동작·출력: 같은 Analyzer 결과/기존 claim 재사용
-- 예외·제약: 선택 새 분석은 본문 캐시 덮어쓰지 않음
-- 완료 기준: mock HTTP 검사는 통과; 실제 DOM 추출 입력 동일성 확인
-- 현재 상태·근거: 추가 검증 필요; main.py; selection; HTTP smoke
+### F21 세 화면 결과 공유
+- 구현 파일·함수: GET lookup / previewFromAnalysis / selection
+- 공통 계약·동작: 동일 article_id·body_hash·원본 캐시 보존
+- 수행한 검증 근거: 실제 HTTP + integration A/B/C
+- 남은 범위: 실제 탭 전환/본문 수정 시나리오
+- 현재 상태: 기본 구현 및 연결 완료
 
-### F22 API 오류·요청 제한 처리
-- 목적: 실패를 오해 없이 안내
-- 입력: 네트워크·HTTP 오류·잘못된 입력
-- 동작·출력: 422/502·timeout·검색 실패 표시·사용자 재시도
-- 예외·제약: 공급자 429 별도 대기열/재시도·비용 제한 미구현
-- 완료 기준: 현재 실패 처리 회귀 통과; 자동 제한 정책은 후속
-- 현재 상태·근거: 일부 구현; main.py; shared/api.js; 관련 오류 테스트
+### F22 오류·분석 상태
+- 구현 파일·함수: ProviderError / ApiError / section_states
+- 공통 계약·동작: 429/503/504/502·Retry-After·pipeline_errors
+- 수행한 검증 근거: MockTransport·오류 카드·서버 종료
+- 남은 범위: 자동 backoff·총 시간 예산·서버 quota 미구현
+- 현재 상태: 기본 구현 및 연결 완료
 
-### F23 Mock 분석 모드
-- 목적: 키 없이 일관된 시연
-- 입력: ANALYSIS_MODE=mock 또는 ?demo
-- 동작·출력: 고정 fixture 반환/화면별 시연 표시·가상 링크 비활성
-- 예외·제약: 요청 기사를 실제 분석한 것처럼 표시하지 않음
-- 완료 기준: 네 화면 및 실제 HTTP 시연 검사 통과
-- 현재 상태·근거: 완료; data/demo.json; mock _run; UI/API smoke
+### F23 입력 기반 Mock 전체 흐름
+- 구현 파일·함수: MockLLM / MockSearch → 동일 Analyzer
+- 공통 계약·동작: 입력 기사/해시·fixture 출처·is_demo
+- 수행한 검증 근거: A/B/C/D·네트워크 금지 테스트
+- 남은 범위: Mock는 실제 AI 품질의 증거가 아님
+- 현재 상태: 기본 구현 및 연결 완료
 
-### F24 실제 Gemini·Tavily 연동
-- 목적: 실제 기사 출처 분석
-- 입력: 서버 키·유효 모델 ID·live 모드
-- 동작·출력: 서버에서 실제 SDK/HTTP 호출하는 코드 작성됨
-- 예외·제약: 실제 키·모델·한도·응답시간 미검증
-- 완료 기준: 실제 호출 1건 이상과 기사 2~3건 품질 기록
-- 현재 상태·근거: 추가 검증 필요; clients.py; backend/.env.example; live 호출 미실행
+### F24 Live 공급자 연결 준비
+- 구현 파일·함수: clients.py / .env.example
+- 공통 계약·동작: 기존 환경변수·스키마·구조화 오류
+- 수행한 검증 근거: 키 없음은 503, SDK/HTTP 대체 검사
+- 남은 범위: 실제 유료 호출은 실행하지 않음
+- 현재 상태: 실제 API 검증 필요
 
-### F25 네이버 실제 환경 통합 테스트
-- 목적: 설치된 확장의 전체 흐름 검증
-- 입력: Chrome 개발자 모드·실제 기사·live 서버
-- 동작·출력: 수동 절차만 문서화, 실행/자동화는 아직 없음
-- 예외·제약: 합성 DOM/headless 검사를 실제 설치 검사와 구분
-- 완료 기준: 실제 기사 2~3건·목록 Hover·선택·권한·탭 전환 증거 기록
-- 현재 상태·근거: 미구현; README; docs/VALIDATION.md; TODO P0/P1
+### F25 설치된 네이버 통합 검증
+- 구현 파일·함수: integration-smoke / run_integration_server
+- 공통 계약·동작: 합성 Naver DOM + 실제 worker/HTTP/UI
+- 수행한 검증 근거: 자동 replay 통합 검사 완료
+- 남은 범위: 실제 Chrome 설치·네이버·유료 API는 미실행
+- 현재 상태: 일부 구현
+
+## 12. 추가 완료 조건
+- 기사 내부 링크·인용은 ArticleContext로 전달하고 원문 밖 자료는 기사 인용으로 생성하지 않는다.
+- Claim/Mention의 article_span은 정규화 page_text의 Unicode 문자 위치로 서버가 산출한다.
+- EventInfo의 시점·장소는 같은 기사 인용에 포함될 때만 사용한다. JSON-LD Event를 본문과 연결하지 못하면 미확인이다. 본문 날짜를 보도일로 대체하지 않는다.
+- 새 선택 분석은 별도 analysis_id 및 scoped claim ID를 가지며 부모 기사 article_id는 유지한다.
+- 서버 Mock은 실제 Analyzer의 추출→검색→출처 관찰→주의사항→캐시 경로를 시연 공급자로 실행한다. ?demo 정적 UI fixture는 별도로 유지한다.
+- Hover는 워커의 30초/64건 입력 인덱스에서 부모 분석을 찾고 서버 GET 조회/본문 해시 검사를 거친다. 없으면 HTML 수집→기존 preview POST로 진행한다.
+- 검색 URL 후보에 한해서만 Tavily extract로 원문을 보강한다. 실패/요약만 확보는 content_status와 pipeline_errors로 구분한다.
+- 각 카드에 ready/empty/partial/error를 표시하고 클라이언트의 요청 중 상태는 loading으로 표시한다. 서버 단계 스트리밍은 구현하지 않는다.
+- 공급자 오류는 configuration_missing/rate_limited/timeout/network_error/invalid_response/provider_error를 구분한다. 원문 확보 누락은 document_unavailable이다.
+- 사용자 흐름 A/B/C/D를 실제 worker와 로컬 HTTP mock 서버로 검사하고 기존 독립 테스트를 유지한다.

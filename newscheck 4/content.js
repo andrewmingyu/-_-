@@ -1,5 +1,5 @@
 (async () => {
-  const [{extractArticle}, {articleRequest}, view] = await Promise.all([
+  const [{extractArticle}, {articleRequest,previewFromAnalysis}, view] = await Promise.all([
     import(chrome.runtime.getURL('lib/extract.js')),
     import(chrome.runtime.getURL('shared/article.js')),
     import(chrome.runtime.getURL('shared/view.js'))
@@ -37,6 +37,10 @@
     timer=setTimeout(async () => {
       show(x,y,'<p>기사 본문과 출처를 수집하는 중입니다.</p>');
       try {
+        const cached=await chrome.runtime.sendMessage({type:'NEWSCHECK_GET_CACHED_ARTICLE',url:url.href});
+        if(run!==sequence)return;
+        if(cached?.ok && cached.data?.analysis){show(x,y,view.renderPreview(previewFromAnalysis(cached.data.analysis)));return;}
+        if(cached && !cached.ok)throw new Error(cached.error || '캐시된 분석을 조회하지 못했습니다.');
         const response = await chrome.runtime.sendMessage({type:'NEWSCHECK_FETCH_ARTICLE',url:url.href});
         if (run !== sequence) return;
         if(!response?.ok) throw new Error(response?.error || '기사 본문 확보 실패');
