@@ -1,26 +1,19 @@
-import { PROVIDERS } from "../lib/llm.js";
-
-const ids = ["provider", "apiKey", "model", "naverId", "naverSecret"];
-const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
-
-function updateHints() {
-  const p = PROVIDERS[el.provider.value];
-  el.apiKey.placeholder = p.keyHint;
-  el.model.placeholder = `기본값: ${p.defaultModel}`;
-}
-
-chrome.storage.local.get(ids).then((s) => {
-  ids.forEach((id) => { if (s[id]) el[id].value = s[id]; });
-  if (!s.provider) el.provider.value = "gemini";
-  updateHints();
+import { backendUrl } from '../shared/api.js';
+const input = document.getElementById('backendUrl');
+const status = document.getElementById('saved');
+chrome.storage.local.get('backendUrl').then(s => { input.value = s.backendUrl || 'http://127.0.0.1:8000'; });
+document.getElementById('save').addEventListener('click', async () => {
+  try {
+    const url = backendUrl(input.value.trim());
+    const permissionUrl = new URL(url);
+    permissionUrl.port = '';
+    if (!await chrome.permissions.request({ origins: [permissionUrl.origin + '/*'] })) throw new Error('서버 접속 권한이 필요합니다.');
+    await chrome.storage.local.set({ backendUrl: url });
+    status.textContent = '저장됨';
+  } catch (e) { status.textContent = e.message; }
+  status.hidden = false;
 });
-
-el.provider.addEventListener("change", () => { el.model.value = ""; updateHints(); });
-
-document.getElementById("save").addEventListener("click", async () => {
-  const data = Object.fromEntries(ids.map((id) => [id, el[id].value.trim()]));
-  await chrome.storage.local.set(data);
-  const s = document.getElementById("saved");
-  s.hidden = false;
-  setTimeout(() => (s.hidden = true), 1800);
+document.getElementById('clear-legacy').addEventListener('click', async () => {
+  await chrome.storage.local.remove(['provider', 'apiKey', 'model', 'naverId', 'naverSecret']);
+  status.hidden = false; status.textContent = '이전 브라우저 API 키 설정을 삭제했습니다.';
 });

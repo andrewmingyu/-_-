@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "뉴스체크 AI",
   "short_name": "뉴스체크",
-  "version": "0.1.0",
-  "description": "뉴스 기사를 읽는 자리에서 제목 자극도, 기자·언론사 특징, 관련 기사 교차검증을 바로 보여줍니다.",
+  "version": "0.2.0",
+  "description": "기사의 근거와 원출처를 추적하고 확인 가능한 출처 정보와 주의사항을 제공합니다.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -25,6 +25,45 @@
     "type": "module"
   },
   "options_page": "options/options.html",
-  "permissions": ["sidePanel", "storage", "scripting", "tabs"],
-  "host_permissions": ["<all_urls>"]
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "scripting",
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://news.naver.com/*",
+    "https://n.news.naver.com/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://news.naver.com/*",
+        "https://n.news.naver.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "lib/extract.js",
+        "shared/article.js",
+        "shared/view.js"
+      ],
+      "matches": [
+        "https://news.naver.com/*",
+        "https://n.news.naver.com/*"
+      ]
+    }
+  ]
 }
