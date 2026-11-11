@@ -1,7 +1,10 @@
 // 이 파일의 함수들은 chrome.scripting.executeScript로 기사 페이지 안에서 실행됩니다.
 // 그래서 바깥 변수를 참조하지 않는 독립 함수여야 합니다.
 
-export function extractArticle() {
+export function extractArticle(htmlText = null, pageUrl = null) {
+  // Also used for a fetched Hover document; parsing never executes page scripts.
+  const document = htmlText === null ? globalThis.document : new DOMParser().parseFromString(htmlText, 'text/html');
+  const location = pageUrl === null ? globalThis.location : new URL(pageUrl);
   const txt = (el) => (el ? (el.innerText || el.textContent || "").replace(/ /g, " ").trim() : "");
   const meta = (...names) => {
     for (const n of names) {
