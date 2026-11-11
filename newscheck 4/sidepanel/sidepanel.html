@@ -1,4 +1,47 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>뉴스체크 AI</title><link rel="stylesheet" href="sidepanel.css"></head>
-<body><header class="top"><div class="brand"><img src="../icons/icon48.png" alt="" width="26" height="26"><span class="brand-name">뉴스체크 AI</span></div><div class="top-actions"><button id="btn-refresh" class="btn">다시 분석</button><button id="btn-settings" class="btn">설정</button></div></header>
-<section id="article-head" class="article-head" hidden><div id="article-meta" class="meta-line"></div><h1 id="article-title"></h1></section>
-<main id="content" aria-live="polite"><p>기사를 읽는 중입니다.</p></main><footer class="foot">출처 확인은 주장의 진실성을 입증하지 않습니다.</footer><script type="module" src="sidepanel.js"></script></body></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>뉴스체크 AI</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="../icons/icon48.png" alt="" width="26" height="26" />
+      <span class="brand-name">뉴스체크 AI</span>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="btn-highlight" title="본문에서 자극 키워드 표시" aria-pressed="false">
+        <svg viewBox="0 0 24 24"><path d="M9 11l-6 6v3h9l3-3"/><path d="M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-refresh" title="다시 분석">
+        <svg viewBox="0 0 24 24"><path d="M20 11a8.1 8.1 0 0 0-15.5-2m-.5-4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-settings" title="설정">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <section id="article-head" class="article-head" hidden>
+    <div class="meta-line" id="article-meta"></div>
+    <h1 id="article-title"></h1>
+    <div class="date-line" id="article-date"></div>
+  </section>
+
+  <main id="content">
+    <div class="state" id="state-loading">
+      <div class="spinner"></div>
+      <p id="loading-text">기사를 읽는 중이에요</p>
+    </div>
+  </main>
+
+  <footer class="foot">
+    AI 분석은 참고용이에요. 최종 판단은 직접 내려주세요.
+  </footer>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

@@ -305,3 +305,124 @@ export function fallbackQuery(title = "") {
   const toks = tokenize(clean).filter((t) => !findSensational(t).length);
   return toks.slice(0, 4).join(" ");
 }
+
+// ---------------- 종합 신뢰도 (퍼센트) ----------------
+// 가짜·진짜 이분법 대신, 네 가지 기준의 근거가 얼마나 충족되는지를 0~100으로 합산합니다.
+// 가중치는 팀에서 조정하세요. 확인할 수 없는 기준은 빼고 나머지로 다시 비율을 맞춥니다.
+export const CREDIBILITY_WEIGHTS = { cross: 40, author: 25, wording: 20, date: 15 };
+
+const SOURCE_TYPE_SCORE = { "공식": 100, "실명": 80, "익명": 45, "SNS·온라인": 25, "없음": 30 };
+
+/**
+ * @param {object} p
+ *  claims: [{status, source_type, type}]  (status: match|conflict|nofound|checking|...)
+ *  relatedPressCount: number|null, crossConsistency: string|null
+ *  style: writingStyle() 결과, reporterName: string, reporterSensationalRatio: number|null
+ *  titleScore: 0~100 (높을수록 자극적), bodyPer1k: number
+ *  published: Date|null, modified: Date|null, now: Date
+ *  imageOld: boolean, reusedCount: number
+ */
+export function computeCredibility(p) {
+  const now = p.now || new Date();
+  const factors = [];
+  const clamp = (x) => Math.max(0, Math.min(100, Math.round(x)));
+
+  // ① 내용 교차검증
+  {
+    const reasons = [];
+    const parts = [];
+    const verified = (p.claims || []).filter((c) => ["match", "conflict", "nofound"].includes(c.status));
+    if (verified.length) {
+      const m = verified.filter((c) => c.status === "match").length;
+      const x = verified.filter((c) => c.status === "conflict").length;
+      const n = verified.length - m - x;
+      parts.push({ v: (m * 100 + n * 40 + x * 0) / verified.length, w: 0.7 });
+      reasons.push(`사실 주장 ${verified.length}개 중 일치 ${m} · 근거 없음 ${n} · 충돌 ${x}`);
+    }
+    if (p.relatedPressCount != null) {
+      const c = p.relatedPressCount;
+      let v = c >= 5 ? 90 : c >= 3 ? 80 : c >= 1 ? 55 : 20;
+      if (p.crossConsistency === "일치") v = Math.min(100, v + 10);
+      if (p.crossConsistency === "부분 일치") v -= 10;
+      if (p.crossConsistency === "단독 주장") v -= 30;
+      parts.push({ v, w: verified.length ? 0.3 : 1 });
+      reasons.push(c ? `같은 사건을 ${c}개 언론사가 보도${p.crossConsistency ? ` (AI 대조: ${p.crossConsistency})` : ""}` : "같은 사건을 다룬 다른 보도를 찾지 못함");
+    }
+    const score = parts.length ? clamp(parts.reduce((s, x) => s + x.v * x.w, 0) / parts.reduce((s, x) => s + x.w, 0)) : null;
+    factors.push({ key: "cross", label: "내용 교차검증", go: "claims", score, reasons, missing: "AI·네이버 키가 있어야 확인할 수 있어요" });
+  }
+
+  // ② 글쓴이·출처
+  {
+    const reasons = [];
+    let score;
+    const facts = (p.claims || []).filter((c) => c.source_type && c.type !== "의견" && c.type !== "전망");
+    if (facts.length) {
+      score = facts.reduce((s, c) => s + (SOURCE_TYPE_SCORE[c.source_type] ?? 40), 0) / facts.length;
+      const cnt = facts.reduce((m, c) => ((m[c.source_type] = (m[c.source_type] || 0) + 1), m), {});
+      reasons.push(`주장의 출처: ${Object.entries(cnt).map(([k, v]) => `${k} ${v}`).join(" · ")}`);
+    } else {
+      const st = p.style || {};
+      const good = (st.officialSources || 0);
+      const weak = (st.anonymousSources || 0) + (st.hearsay || 0);
+      score = good + weak ? 40 + 60 * (good / (good + weak)) : 60;
+      reasons.push(`본문 표현: 공식 출처 ${good}회 · 익명·전언 ${weak}회`);
+    }
+    if (p.reporterName) { score += 5; reasons.push(`기자 실명 확인 (${p.reporterName})`); }
+    else { score -= 15; reasons.push("기자 이름을 찾을 수 없음"); }
+    if (p.reporterSensationalRatio != null && p.reporterSensationalRatio >= 40) {
+      score -= 10; reasons.push(`이 기자의 최근 기사 ${p.reporterSensationalRatio}%가 자극 키워드 사용`);
+    }
+    factors.push({ key: "author", label: "글쓴이·출처", go: "source", score: clamp(score), reasons });
+  }
+
+  // ③ 자극적 표현
+  {
+    const reasons = [];
+    let score = 100 - (p.titleScore || 0);
+    reasons.push(`제목 자극도 ${p.titleScore || 0}점`);
+    if (p.bodyPer1k > 2) { score -= Math.min(20, p.bodyPer1k * 3); reasons.push(`본문 자극 키워드 1,000자당 ${p.bodyPer1k}점`); }
+    factors.push({ key: "wording", label: "자극적 표현", go: "title", score: clamp(score), reasons });
+  }
+
+  // ④ 날짜
+  {
+    const reasons = [];
+    let score;
+    if (!p.published) { score = 50; reasons.push("작성 날짜를 찾을 수 없음"); }
+    else {
+      const days = Math.floor((now - p.published) / 86400000);
+      score = days <= 7 ? 100 : days <= 30 ? 85 : days <= 365 ? 65 : 45;
+      reasons.push(days <= 0 ? "오늘 작성된 기사" : days <= 30 ? `${days}일 전 작성` : `${days >= 365 ? Math.floor(days / 365) + "년" : Math.floor(days / 30) + "개월"} 전 기사 · 현재 상황과 다를 수 있음`);
+      if (p.modified && p.modified - p.published > 3600000) reasons.push("게시 후 수정된 기사");
+    }
+    if (p.imageOld) { score -= 15; reasons.push("사진 촬영 시점이 기사보다 오래됨"); }
+    if (p.reusedCount) { score -= 15; reasons.push(`일주일 이상 지난 기사와 내용이 비슷함 (${p.reusedCount}건)`); }
+    factors.push({ key: "date", label: "날짜·시의성", go: "related", score: clamp(score), reasons });
+  }
+
+  // 가중 합산 (확인 못 한 기준은 제외하고 다시 비율 맞춤)
+  let sum = 0, wsum = 0;
+  factors.forEach((f) => {
+    f.weight = CREDIBILITY_WEIGHTS[f.key];
+    if (f.score != null) { sum += f.score * f.weight; wsum += f.weight; }
+  });
+  const total = Object.values(CREDIBILITY_WEIGHTS).reduce((a, b) => a + b, 0);
+  let score = wsum ? Math.round(sum / wsum) : null;
+
+  // 다른 보도와 충돌하는 주장이 있으면 다른 항목이 좋아도 상한을 둔다
+  const conflicts = (p.claims || []).filter((c) => c.status === "conflict").length;
+  let capped = false;
+  if (score != null && conflicts && score > 60) { score = 60; capped = true; }
+
+  const coverage = Math.round((wsum / total) * 100);
+  return { score, band: credibilityBand(score), coverage, tentative: factors[0].score == null || coverage < 70, capped, conflicts, factors };
+}
+
+export function credibilityBand(score) {
+  if (score == null) return { key: "none", label: "판단 보류" };
+  if (score >= 80) return { key: "calm", label: "신뢰 근거 충분" };
+  if (score >= 60) return { key: "low", label: "대체로 신뢰할 만함" };
+  if (score >= 40) return { key: "mid", label: "주의해서 읽기" };
+  return { key: "high", label: "신뢰 근거 부족" };
+}
