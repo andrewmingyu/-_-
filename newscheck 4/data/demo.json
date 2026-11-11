@@ -1,0 +1,306 @@
+{
+  "_설명": "발표·시연용 가상 데이터입니다. 언론사·기자·기사는 모두 지어낸 예시예요.",
+  "article": {
+    "url": "https://news.example/article/1",
+    "host": "sejungeconomy.example",
+    "originalUrl": "",
+    "title": "충격! 전기차 보조금 결국 30% 삭감…차주들 '날벼락'",
+    "subtitle": "",
+    "press": "세정경제",
+    "reporters": [
+      "김서연"
+    ],
+    "reporterEmail": "",
+    "published": "2026-11-09T10:24:00+09:00",
+    "modified": "2026-11-09T14:37:00+09:00",
+    "body": "정부가 전기차 보조금 규모를 내년부터 최대 30%까지 줄이는 방안을 검토하고 있는 것으로 알려졌다.\n산업통상자원부 관계자는 5일 \"재정 여건과 시장 성숙도를 고려해 보조금 제도를 조정하는 방안을 내부적으로 논의하고 있다\"고 밝혔다.\n다만 구체적인 축소 규모와 시행 시점은 아직 확정되지 않은 것으로 전해졌다.\n업계에서는 보조금이 줄어들면 전기차 시장 성장세가 둔화할 수 있다는 우려가 나온다.\n한 업계 관계자는 \"소비자들이 구매 시점을 앞당기거나 미루는 등 혼란이 생길 수 있다\"고 말했다.\n정부는 이달 중 관계 부처 협의를 거쳐 개편 방향을 발표할 예정이다.",
+    "paragraphs": [
+      "정부가 전기차 보조금 규모를 내년부터 최대 30%까지 줄이는 방안을 검토하고 있는 것으로 알려졌다.",
+      "산업통상자원부 관계자는 5일 \"재정 여건과 시장 성숙도를 고려해 보조금 제도를 조정하는 방안을 내부적으로 논의하고 있다\"고 밝혔다."
+    ],
+    "images": [
+      {
+        "src": "../icons/icon128.png",
+        "caption": "지난 3월 15일 서울의 한 전기차 충전소에서 차량이 충전하고 있다. 자료사진"
+      }
+    ],
+    "isArticle": true
+  },
+  "aiTitle": {
+    "neutral_title": "정부, 전기차 보조금 최대 30% 축소 검토…규모·시점은 미정",
+    "sensational_score": 72,
+    "verdict": "다소 과장",
+    "differences": [
+      "본문은 '검토 중'이라고 했지만 원제목은 '결국 삭감'으로 확정된 것처럼 표현했어요.",
+      "30%는 최대치인데 원제목은 확정 수치처럼 썼어요.",
+      "'날벼락'은 본문 어디에도 나오지 않는 감정적 표현이에요."
+    ],
+    "exaggerated_phrases": [
+      {
+        "phrase": "충격!",
+        "why": "본문 내용과 무관하게 감정을 자극하는 표현이에요."
+      },
+      {
+        "phrase": "결국 30% 삭감",
+        "why": "본문은 최대 30% 축소를 검토 중이라고만 했어요."
+      },
+      {
+        "phrase": "날벼락",
+        "why": "차주 반응을 다룬 내용이 본문에 없어요."
+      }
+    ],
+    "summary": [
+      "정부가 전기차 보조금을 내년부터 최대 30% 줄이는 방안을 검토 중이에요.",
+      "구체적인 규모와 시행 시점은 아직 정해지지 않았어요.",
+      "정부는 이달 중 개편 방향을 발표할 예정이에요."
+    ],
+    "search_query": "전기차 보조금 축소 검토"
+  },
+  "aiReporter": {
+    "main_fields": [
+      "산업·에너지 정책",
+      "자동차"
+    ],
+    "style_summary": "정부 관계자 발언을 중심으로 정책 변화를 빠르게 전하는 속보형 기사가 많아요. 업계 반응을 덧붙이는 구성이 자주 보여요.",
+    "title_tendency": "확정되지 않은 사안을 단정형으로 쓰는 제목이 종종 있어요."
+  },
+  "reporterItems": [
+    {
+      "title": "충격 실적에 결국 구조조정…자동차 부품업계 비상",
+      "description": "",
+      "link": "https://news.example/a",
+      "host": "sejungeconomy.example",
+      "press": "세정경제",
+      "date": "2026-11-07"
+    },
+    {
+      "title": "정부, 수소차 충전소 2배 확대 추진",
+      "description": "",
+      "link": "https://news.example/b",
+      "host": "sejungeconomy.example",
+      "press": "세정경제",
+      "date": "2026-11-05"
+    },
+    {
+      "title": "전기료 결국 또 오른다…가계 부담 경악",
+      "description": "",
+      "link": "https://news.example/c",
+      "host": "sejungeconomy.example",
+      "press": "세정경제",
+      "date": "2026-11-03"
+    },
+    {
+      "title": "배터리 재활용 시장 3년 새 40% 성장",
+      "description": "",
+      "link": "https://news.example/d",
+      "host": "sejungeconomy.example",
+      "press": "세정경제",
+      "date": "2026-10-30"
+    },
+    {
+      "title": "완성차 3사 3분기 판매 전년 수준 유지",
+      "description": "",
+      "link": "https://news.example/e",
+      "host": "sejungeconomy.example",
+      "press": "세정경제",
+      "date": "2026-10-28"
+    },
+    {
+      "title": "충전 요금 인상 논란…소비자 단체 반발",
+      "description": "",
+      "link": "https://news.example/f",
+      "host": "sejungeconomy.example",
+      "press": "세정경제",
+      "date": "2026-10-24"
+    }
+  ],
+  "related": [
+    {
+      "title": "전기차 보조금 개편 논의…구체안은 미정",
+      "description": "",
+      "link": "https://news.example/r1",
+      "host": "a.example",
+      "press": "가람뉴스",
+      "date": "2026-11-09",
+      "olderDays": 0,
+      "reused": false
+    },
+    {
+      "title": "보조금 최대 30% 축소 가능성…업계 반발",
+      "description": "",
+      "link": "https://news.example/r2",
+      "host": "b.example",
+      "press": "나래경제",
+      "date": "2026-11-09",
+      "olderDays": 0,
+      "reused": false
+    },
+    {
+      "title": "정부 \"보조금 조정은 검토 단계\"",
+      "description": "",
+      "link": "https://news.example/r3",
+      "host": "c.example",
+      "press": "다솜일보",
+      "date": "2026-11-08",
+      "olderDays": 1,
+      "reused": false
+    },
+    {
+      "title": "전기차 보조금 축소 검토에 소비자 문의 늘어",
+      "description": "",
+      "link": "https://news.example/r4",
+      "host": "d.example",
+      "press": "라온방송",
+      "date": "2026-11-09",
+      "olderDays": 0,
+      "reused": false
+    },
+    {
+      "title": "전기차 보조금 내년 축소 전망",
+      "description": "",
+      "link": "https://news.example/r5",
+      "host": "e.example",
+      "press": "마루신문",
+      "date": "2026-08-12",
+      "olderDays": 89,
+      "reused": true
+    }
+  ],
+  "cross": {
+    "consistency": "부분 일치",
+    "consistency_note": "보조금 축소를 검토 중이라는 사실은 다른 4개 언론사도 같게 전하고 있어요. 다만 다른 기사들은 모두 '검토 단계'로 표현했고, 축소가 확정됐다고 쓴 곳은 없어요.",
+    "framing": "같은 내용을 다룬 기사 중 이 기사의 제목이 가장 단정적이고 감정적인 표현을 썼어요.",
+    "only_in_this_article": [
+      "보조금 삭감이 확정되었다는 뉘앙스"
+    ]
+  },
+  "claims": [
+    {
+      "text": "정부가 전기차 보조금을 내년부터 최대 30%까지 줄이는 방안을 검토하고 있다",
+      "type": "사실",
+      "source": "산업통상자원부 관계자",
+      "source_type": "익명",
+      "quote": "정부가 전기차 보조금 규모를 내년부터 최대 30%까지",
+      "status": "match",
+      "note": "가람뉴스·나래경제·다솜일보도 정부가 보조금 축소를 검토 중이라고 같게 전하고 있어요.",
+      "evidence": [
+        {
+          "title": "전기차 보조금 개편 논의…구체안은 미정",
+          "description": "",
+          "link": "https://news.example/r1",
+          "host": "a.example",
+          "press": "가람뉴스",
+          "dateText": "2026-11-09"
+        },
+        {
+          "title": "보조금 최대 30% 축소 가능성…업계 반발",
+          "description": "",
+          "link": "https://news.example/r2",
+          "host": "b.example",
+          "press": "나래경제",
+          "dateText": "2026-11-09"
+        },
+        {
+          "title": "정부 \"보조금 조정은 검토 단계\"",
+          "description": "",
+          "link": "https://news.example/r3",
+          "host": "c.example",
+          "press": "다솜일보",
+          "dateText": "2026-11-08"
+        }
+      ],
+      "evidenceIdx": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "text": "전기차 보조금이 30% 삭감된다 (제목)",
+      "type": "사실",
+      "source": "출처 없음 (제목 표현)",
+      "source_type": "없음",
+      "quote": "",
+      "status": "conflict",
+      "note": "다솜일보는 정부가 '조정은 검토 단계'라고 밝혔다고 전해요. 삭감이 확정됐다는 보도는 찾지 못했어요.",
+      "evidence": [
+        {
+          "title": "전기차 보조금 개편 논의…구체안은 미정",
+          "description": "",
+          "link": "https://news.example/r1",
+          "host": "a.example",
+          "press": "가람뉴스",
+          "dateText": "2026-11-09"
+        },
+        {
+          "title": "보조금 최대 30% 축소 가능성…업계 반발",
+          "description": "",
+          "link": "https://news.example/r2",
+          "host": "b.example",
+          "press": "나래경제",
+          "dateText": "2026-11-09"
+        },
+        {
+          "title": "정부 \"보조금 조정은 검토 단계\"",
+          "description": "",
+          "link": "https://news.example/r3",
+          "host": "c.example",
+          "press": "다솜일보",
+          "dateText": "2026-11-08"
+        },
+        {
+          "title": "전기차 보조금 축소 검토에 소비자 문의 늘어",
+          "description": "",
+          "link": "https://news.example/r4",
+          "host": "d.example",
+          "press": "라온방송",
+          "dateText": "2026-11-09"
+        }
+      ],
+      "evidenceIdx": [
+        2,
+        0
+      ]
+    },
+    {
+      "text": "소비자들이 구매 시점을 앞당기거나 미루는 혼란이 생길 수 있다",
+      "type": "사실",
+      "source": "익명 업계 관계자",
+      "source_type": "익명",
+      "quote": "소비자들이 구매 시점을 앞당기거나",
+      "status": "nofound",
+      "note": "라온방송이 소비자 문의가 늘었다고 전했지만, 구매 시점 혼란을 직접 확인한 보도는 없어요.",
+      "evidence": [
+        {
+          "title": "전기차 보조금 축소 검토에 소비자 문의 늘어",
+          "description": "",
+          "link": "https://news.example/r4",
+          "host": "d.example",
+          "press": "라온방송",
+          "dateText": "2026-11-09"
+        }
+      ],
+      "evidenceIdx": [
+        0
+      ]
+    },
+    {
+      "text": "정부는 이달 중 관계 부처 협의를 거쳐 개편 방향을 발표할 예정이다",
+      "type": "전망",
+      "source": "기사 서술",
+      "source_type": "없음",
+      "quote": "정부는 이달 중 관계 부처 협의를",
+      "status": "forecast",
+      "evidence": []
+    },
+    {
+      "text": "보조금이 줄면 전기차 시장 성장세가 둔화할 수 있다",
+      "type": "의견",
+      "source": "업계 반응",
+      "source_type": "익명",
+      "quote": "전기차 시장 성장세가 둔화할 수 있다",
+      "status": "opinion",
+      "evidence": []
+    }
+  ]
+}
