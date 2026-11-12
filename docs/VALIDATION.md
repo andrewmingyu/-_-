@@ -1,22 +1,26 @@
 ﻿# 기본 기능 및 통합 검증 결과
-기준일: 2026-11-11 (Asia/Seoul). 확장 0.2.0, schema_version=source-tracing-v1, data_version=source-tracing-v1.1.
+기준일: 2026-11-12 (Asia/Seoul). 확장 0.2.0, schema_version=source-tracing-v1, data_version=source-tracing-v1.3.
 현재 기능 브랜치의 로컬 검증 기록이다. 이전 main 기준 JavaScript 9개·Python 19개와 이번 결과를 구분한다.
 
 ## 실행한 검증
 | 명령 | 결과 | 검증 범위 |
 |---|---|---|
-| npm.cmd test | 15개 통과 | 네이버 대표 DOM/JSON-LD·작성/수정일·링크/인용·잘림·추출 실패, 입력 캐시·갱신 순서, 카드 독립 토글·로딩/오류·출처 참조, 안전한 렌더링·계약·API 오류 |
+| npm.cmd test | 20개 통과 | 기존 추출·카드·캐시·API 회귀, 보도 비교·안전한 렌더링·독립 토글 및 요약 글머리표·메타데이터 위치·배경 네모/화살표·한 줄 기사 목록 |
 | npm.cmd run typecheck | 통과 | Pydantic과 대응하는 TypeScript 계약 및 기존 기본값 호환 |
 | npm.cmd run build | 통과 | 확장 JavaScript 구문·manifest 진입점 및 dist/newscheck 패키지 |
-| npm.cmd run test:browser | 통과 | 실제 Chrome headless에서 패널 6개·키보드 토글·상태 유지·가로 넘침·시연 표시·Hover 지연/취소·선택 메시지 |
-| .venv/Scripts/python.exe -m pytest -q | 35개 통과 | 원문/발언자·출처 ID/인용 거부, 출처/주의사항 상태, 원문 확보 허용 목록, 공급자 오류/Retry-After, 입력 기반 Mock·이벤트·위치·주의사항 참조, 캐시·API·스키마 snapshot |
+| npm.cmd run test:browser | 통과 | Chrome headless 320/440/880px에서 요약 옆 작은 기사 정보, 배경 네모/화살표, 한 줄 보도·기사별 비교 펼침, 독립 카드·키보드·Hover·선택 이벤트 |
+| .venv/Scripts/python.exe -m pytest -q | 53개 통과 | 기존 회귀·키 비노출·공급자별 점검·오류 구분 및 관련 기사 5건 중 앞 3건만 비교하는 계약 |
+| .venv/Scripts/python.exe scripts/check_api_setup.py | 설정 입력 확인 | 실제 키 2개를 Git 제외 .env로 옮긴 뒤 mode=live·키/모델 입력 확인. 생성·검색 호출 없음 |
+| .venv/Scripts/python.exe scripts/check_api_setup.py --list-models | 실제 조회 성공 | Gemini 모델 목록 요청 성공, 생성 지원 모델 40개 표시. 목록 조회와 아래의 실제 생성·검색 검사는 별개 |
+| .venv/Scripts/python.exe scripts/check_api_setup.py --live --provider gemini | 실제 PASS | gemini-3.1-flash-lite의 작은 ConnectionReply 구조화 응답 성공. 앞서 gemini-3.8-flash 시험은 504 DEADLINE_EXCEEDED로 실패해 로컬 모델 설정 변경 |
+| 사용자가 실행한 --live의 Tavily 결과 | 실제 PASS 보고 | 검색 결과 5건으로 사용자 터미널 출력 확인. Gemini 재검사에서 Tavily 중복 호출은 하지 않음 |
 | .venv/Scripts/python.exe scripts/smoke_backend.py | 통과 | 실제 로컬 Uvicorn HTTP의 health·기사·preview·문장 선택, 같은 article_id/body_hash/is_demo 및 출처 |
-| npm.cmd run test:integration | 통과 | 합성 네이버 DOM → 실제 worker/API 클라이언트 → 로컬 HTTP Mock Analyzer → 실제 UI의 A/B/C/D, 서버 중단·카드 오류·재시도 |
+| npm.cmd run test:integration | 통과 | 기존 A/B/C/D에 공통·차이 구절과 검색 요약 범위 배지, 320px/440px 넘침 없음 및 실제 카드 화면 캡처 추가 |
 | node scripts/check-commit.mjs | 통과 | 추적/추가 후보 파일에서 제외 대상 및 고확률 비밀 패턴 검사; 비밀 값은 출력하지 않음 |
 | git diff --check | 통과 | 변경 공백 오류 없음 |
 | 로컬 문서 링크 검사 | 통과 | README/개발 문서의 상대 링크 대상 존재 |
 
-자동 단위·회귀 테스트는 **JavaScript 15 + Python 35 = 50개**다. Chrome 브라우저·HTTP·A/B/C/D 통합 smoke는 별도 실행한다.
+자동 단위·회귀 테스트는 **JavaScript 20 + Python 53 = 73개**다. Chrome 브라우저·HTTP·A/B/C/D 통합 smoke는 별도 실행한다. API 설정 CLI의 단위 테스트는 대체 클라이언트를 사용하며 별도 실행한 실제 연결 검사와 구분한다. 작은 구조화 응답의 성공은 기사 분석 품질 검증이 아니다.
 공급자 SDK 설정과 HTTP 오류는 대체 클라이언트/MockTransport로 확인했으며 실제 공급자 호출 결과가 아니다.
 
 ## A/B/C/D 전체 연결 검사
@@ -44,13 +48,14 @@ scripts/integration-smoke.mjs는 fixtures/naver_article.html과 mock_source_docu
 - .github/workflows/ci.yml에 같은 검증을 구성했다. 이 문서는 로컬 검증 기록이며, 해당 커밋의 원격 CI 결과는 PR의 Checks에서 별도로 확인한다.
 
 ## 실행하지 않은 검증과 남은 범위
-- 실제 Gemini 호출, 계정별 모델 가용성·구조화 출력 호환성, 주장/근거/발언자/문장 유형 추출 품질.
+- 실제 기사의 Extraction/SourceReviews/ReportComparisons 전체 구조화 출력 호환성과 추출 품질. 실제 Gemini의 작은 ConnectionReply 생성은 성공했지만 복잡한 기사 스키마까지 검증한 것은 아니다.
 - 실제 Tavily 검색/extract의 원문·발행일·원자료 관계·요청 제한·응답시간, 출처 10개 관찰과 주의사항의 정확도.
+- 실제 Gemini의 다른 보도 공통/차이 분류 정확도와 동일 사건 후보 선정 품질. 인용 존재 검사만으로 비교 해석의 적절성을 보증하지 않는다.
 - Chrome에 확장을 설치한 실제 네이버 기사 2~3건의 추출·Hover·패널·드래그·탭 이동·캐시 갱신.
 - 실제 동적 목록·복합/부분 선택·접근성·화면낭독기·키보드 Hover 대체.
 - 공개 기자 약력·기사 밖 배경 수집, 기사 전문 비교, 자동 backoff·요청/비용 제한·인증·지속 캐시·단계 스트리밍은 미구현.
-유료 외부 API 요청은 수행하지 않았다. 다음 검증의 선행 조건·완료 조건·관련 파일은 TODO.md에 명시한다.
+이번 패널 배치 변경 검증에서는 외부 API를 추가 호출하지 않았다. 앞서 실행한 실제 연결 검사는 위 표와 구분한다. 다음 검증의 선행 조건·완료 조건·관련 파일은 TODO.md에 명시한다.
 
 ## Git 상태
-기준 main/원격 HEAD는 기존 PR #1 병합 커밋 33b9b0a92475c9c7464f3def1e151dda4e852182다.
-기본 구현 단계에서는 feature/core-flow-integration에 로컬 변경만 유지했다. 이후 사용자 요청에 따라 변경을 커밋·Push하고 main 대상 PR을 생성한다. Merge와 Issues 생성은 이번 범위에 포함하지 않는다.
+개발 기준 PR #1 커밋은 33b9b0a, PR #2의 핵심 흐름 보완 커밋은 1e4e425다.
+이번 보도 비교는 1e4e425 기반의 feature/report-comparison에 로컬 변경으로 유지한다. 2026-11-12 fetch에서 origin/main의 PR #1 되돌리기(b04c628)를 확인했으며 원격 코드는 수정하지 않았다. 이번 변경의 commit/Push/PR/Merge/Issues 생성 및 원격 CI 실행은 하지 않았다.

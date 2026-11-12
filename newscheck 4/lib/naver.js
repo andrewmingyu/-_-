@@ -1,6 +1,5 @@
-// 네이버 뉴스 검색 API
-// 2026년 7월 31일부터 신규 발급은 네이버 클라우드 플랫폼의 NAVER API HUB에서만 가능합니다.
-// HUB 키를 먼저 시도하고, 실패하면 예전 개발자센터 방식(2027년 6월 30일까지 유지)으로 다시 시도합니다.
+// 기존 네이버 검색 모듈 보존용. 현재 분석 경로는 backend/app/clients.py의 Tavily를 사용합니다.
+// 이 모듈을 다시 연결할 때는 엔드포인트와 키 발급 정책을 공식 문서에서 별도로 확인해야 합니다.
 import { stripHtml, hostOf, parseDate } from "./analysis.js";
 
 const ENDPOINTS = [

@@ -1,4 +1,4 @@
-# API 명세 — source-tracing-v1 / 데이터 보완 1.1
+# API 명세 — source-tracing-v1 / 데이터 보완 1.3
 구현 기준: backend/app/main.py·models.py, newscheck 4/shared/types.ts.
 서버 자동 문서: http://127.0.0.1:8000/docs. 기계 판독 스키마: [api.schema.json](api.schema.json).
 모든 JSON은 UTF-8이고 Content-Type은 application/json이다.
@@ -14,7 +14,7 @@
 
 health 응답:
 ```json
-{"status":"ok","mode":"mock","schema_version":"source-tracing-v1","data_version":"source-tracing-v1.1"}
+{"status":"ok","mode":"mock","schema_version":"source-tracing-v1","data_version":"source-tracing-v1.3"}
 ```
 
 ## 요청
@@ -100,12 +100,13 @@ Pydantic extra=forbid이므로 정의하지 않은 필드는 422다.
 | article_id / body_hash | 입력 기반 분석 키 식별자 / 본문 SHA-256; 서버 Mock도 입력과 연결 |
 | analysis_status | complete 또는 partial; 진위/확률이 아님 |
 | is_demo | boolean 필수. 시연 결과 오인 방지 |
+| one_line_summary | 문자열 유지. 짧은 1~2문장을 줄바꿈으로 구분하도록 요청. UI는 글머리표로 표시하며 기존 문단 응답도 호환 |
 | context_timeline | date, description, article_quote. 기사 내부 내용만 |
 | claims | 원문·유형·발언자·근거/출처 참조·원출처 상태·주의사항 |
 | evidence_mentions | 기사 자체가 근거로 제시한 자료/발언 |
 | sources | 실제 검색에서 확보한 출처 |
 | caution | 기사 전체의 주의 상태와 이유 |
-| related_articles | URL·제목·발행자/시점·검색 요약·독립성 설명 |
+| related_articles | 최대 5건. URL·제목·발행자/시점·검색 요약·독립성 설명. 앞 3건까지 보도 비교 수행 |
 | headline_difference | 제목과 본문의 표현 차이 |
 | final_comment | 출처 관찰 범위의 안내; 진위 판정 없음 |
 | search_status / search_errors | 원출처 검색 상태 / 검색·속성 정리·관련 보도 단계 오류 |
@@ -156,6 +157,8 @@ SelectionAnalysis는 article_id, selected_text, is_demo, claims[], sources[], ca
 | 전체 공급자 설정 누락 | 503, code=configuration_missing |
 | 전체 공급자 호출 한도 | 429, code=rate_limited, 가능한 Retry-After |
 | 전체 공급자 시간 초과 | 504, code=timeout |
+| 공급자 인증/권한/모델·경로/요청 형식 오류 | 502, authentication_failed/permission_denied/request_not_found/invalid_request; 공급자 원문은 숨김 |
+| 공급자 결제·사용량 문제/서비스 장애 | 503, billing_required/provider_unavailable; 가능한 Retry-After 전달 |
 | 공급자 형식/연결/기타 오류 | 502, invalid_response/network_error/provider_error; 내부 원문·키 비공개 |
 | Tavily 원출처 검색 실패 | HTTP 200의 partial 결과, failed·unknown 및 search_errors |
 | 출처 속성 정리 실패 | partial·unknown; 원출처 검색 자체의 상태와 별도 설명 |
@@ -163,20 +166,25 @@ SelectionAnalysis는 article_id, selected_text, is_demo, claims[], sources[], ca
 | 부분 단계의 공급자 오류 | HTTP 200 partial 결과의 pipeline_errors에 phase/code/provider/retry_after_seconds 기록; source_search 실패와 document_fetch 실패 구분 |
 | 클라이언트 네트워크/HTTP 실패 | 팝업/패널 오류 표시; source_not_found 결과로 대체하지 않음 |
 
-서버 인증·사용자별 quota·자동 backoff·Retry-After 처리는 아직 없다. 외부 공개 배포 전에 별도 구현한다.
+서버 인증·사용자별 quota·자동 backoff·Retry-After에 따른 자동 대기/재시도는 아직 없다. Retry-After 값의 파싱·응답 전달은 구현되어 있다. 외부 공개 배포 전에 제한 정책을 별도 구현한다.
 
 ## 추가 필드와 기본값 (기존 경로 유지)
-- schema_version은 source-tracing-v1, data_version 기본값은 source-tracing-v1.1이다. 기존 클라이언트의 기본 필드를 유지하고 추가 항목은 기본값으로 생략 입력을 허용한다.
+- schema_version은 source-tracing-v1, data_version 기본값은 source-tracing-v1.3이다. 기존 클라이언트의 기본 필드를 유지하고 추가 항목은 기본값으로 생략 입력을 허용한다.
 - ArticleContext: cited_links의 각 항목은 url/text/article_quote이며 기사에서 수집한 링크다. 직접 링크라도 검색에서 확인되지 않은 새 출처로 저장하지 않는다. quotations는 원문에 있는 인용, body_truncated는 잘림 여부다.
 - Claim/Mention/TimelineItem.article_span: start/end/quote, 정규화 page_text의 Unicode 문자 기준, 서버 산출.
 - EventInfo: description/article_quote/time/location. quote가 본문에 있고 time/location이 그 인용에 포함돼야 한다.
 - TimelineItem.source_ids: 실제 확보한 출처와 연결되는 경우만 저장.
 - Source.author: 작성자 관찰, facts.authorship 추가. content_status는 retrieved/snippet_only/unavailable/unknown이다.
 - Decision.details: {reason, source_ids[], claim_ids[]} 목록. 이유와 출처/주장을 연결하며 허구 참조는 거부한다. 기존 reasons[]도 유지한다.
-- RelatedArticle.topic/summary: 검색 주제 및 공급자 검색 요약. 기사 간 차이나 독립성 판단을 생성하지 않는다.
+- RelatedArticle.topic/summary: 검색 주제 및 공급자 검색 요약. 독립성이나 주장의 진위 판정은 생성하지 않는다.
+- RelatedArticle.id: 검색 URL에서 서버가 부여한 report ID. comparison_basis는 body_excerpt/search_snippet/title_only/unknown, comparison_status는 not_compared/compared/insufficient/failed다.
+- comparison_points: {kind:common|difference, aspect:topic|event|actors|time|figures|attribution|focus|context, article_quote, related_quote}. 양쪽 실제 인용(8~600자)을 모두 확인한 항목만 최대 6개 저장한다. compared에는 report ID·확인된 비교 범위·비교 항목이 필요하다.
+- common은 공통 보도 항목, difference는 표현·강조 차이다. 근거의 지지/반박이나 진위 상태가 아니다. differences_summary는 검증된 항목의 종류를 서버가 짧게 조합한 설명이다.
+- 이전 응답의 비교 필드 생략은 id='', basis=unknown, status=not_compared, points=[]로 호환한다. 비교 실패는 related_comparison 단계 오류이며 기존 기사 목록을 유지한다.
 - ArticleAnalysis.section_states: context/metadata/claims/evidence/cautions/related의 {status,message}. status는 ready/empty/partial/error. 요청 중 loading은 클라이언트 표시 전용이다.
 - PipelineError: phase, code, message, provider, retry_after_seconds. phase는 source_search/document_fetch/source_review/related_search 등을 구분한다.
 - GET lookup은 TTL이 지난 결과를 반환하지 않고 url이 다르면 404다. refresh와 TTL이 캐시 관리의 기본 수단이며 중복된 cache POST/DELETE API는 추가하지 않는다.
+- 조회 URL의 형식 오류는 캐시가 비었거나 ID가 없어도 422로 반환한다. 원출처 검색이 필요 없어 search_status=not_run인 결과도 오류가 없으면 캐시에 저장할 수 있다.
 
 구조화된 전체 오류 예시:
 ```json

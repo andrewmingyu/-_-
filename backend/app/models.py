@@ -144,7 +144,24 @@ class TimelineItem(Model):
     source_ids: list[str] = Field(default_factory=list)
 
 
+class ReportComparisonPoint(Model):
+    kind: Literal['common', 'difference']
+    aspect: Literal['topic', 'event', 'actors', 'time', 'figures', 'attribution', 'focus', 'context']
+    article_quote: str = Field(min_length=8, max_length=600)
+    related_quote: str = Field(min_length=8, max_length=600)
+
+
+class ReportComparison(Model):
+    report_id: str
+    points: list[ReportComparisonPoint] = Field(default_factory=list, max_length=6)
+
+
+class ReportComparisons(Model):
+    reports: list[ReportComparison] = Field(default_factory=list, max_length=3)
+
+
 class RelatedArticle(Model):
+    id: str = ''
     url: HttpUrl
     title: str
     publisher: str | None = None
@@ -153,11 +170,22 @@ class RelatedArticle(Model):
     independence: str = '독립적인 자료에 기반했는지 확인하지 못했습니다.'
     topic: str | None = None
     summary: str | None = None
+    comparison_basis: Literal['body_excerpt', 'search_snippet', 'title_only', 'unknown'] = 'unknown'
+    comparison_status: Literal['not_compared', 'compared', 'insufficient', 'failed'] = 'not_compared'
+    comparison_points: list[ReportComparisonPoint] = Field(default_factory=list, max_length=6)
+
+    @model_validator(mode='after')
+    def comparison_is_grounded(self):
+        if bool(self.comparison_points) != (self.comparison_status == 'compared'):
+            raise ValueError('Comparison status requires paired quotes')
+        if self.comparison_status == 'compared' and (not self.id or self.comparison_basis == 'unknown'):
+            raise ValueError('Comparison requires a report ID and material scope')
+        return self
 
 
 class ArticleAnalysis(Model):
     schema_version: Literal['source-tracing-v1'] = 'source-tracing-v1'
-    data_version: str = 'source-tracing-v1.1'
+    data_version: str = 'source-tracing-v1.3'
     article_id: str
     body_hash: str
     analysis_status: Literal['partial', 'complete']
@@ -193,6 +221,9 @@ class ArticleAnalysis(Model):
             raise ValueError('Unknown source mention')
         if any(not set(t.source_ids) <= source_ids for t in self.context_timeline):
             raise ValueError('Unknown timeline source')
+        report_ids = [r.id for r in self.related_articles if r.id]
+        if len(set(report_ids)) != len(report_ids):
+            raise ValueError('Duplicate related report ID')
         for decision in [self.caution, *[c.caution for c in self.claims], *[s.caution for s in self.sources]]:
             if any(not set(d.source_ids) <= source_ids or not set(d.claim_ids) <= claim_ids for d in decision.details):
                 raise ValueError('Unknown caution reference')
@@ -238,7 +269,7 @@ class Preview(Model):
     search_status: SearchStatus
     claims: list[Claim] = Field(default_factory=list)
     body_hash: str = ''
-    data_version: str = 'source-tracing-v1.1'
+    data_version: str = 'source-tracing-v1.3'
     pipeline_errors: list[PipelineError] = Field(default_factory=list)
 
 

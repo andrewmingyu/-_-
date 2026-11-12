@@ -46,6 +46,19 @@ function rejectLegacy(obj) {
   const scan = value => { if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) { if (banned.has(k)) throw new Error('이전 사실 판정 응답은 지원하지 않습니다.'); scan(v); } };
   scan(obj);
 }
+function validateRelatedReport(report) {
+  if(typeof report.url!=='string'||typeof report.title!=='string')throw new Error('관련 보도 형식 오류');
+  if(report.comparison_basis!==undefined&&!['body_excerpt','search_snippet','title_only','unknown'].includes(report.comparison_basis))throw new Error('보도 비교 범위 오류');
+  if(report.comparison_status!==undefined&&!['not_compared','compared','insufficient','failed'].includes(report.comparison_status))throw new Error('보도 비교 상태 오류');
+  const points=report.comparison_points ?? [];
+  if(!Array.isArray(points)||points.length>6)throw new Error('보도 비교 항목 오류');
+  if((points.length>0)!==(report.comparison_status==='compared'))throw new Error('보도 비교 상태와 항목 불일치');
+  if(points.length&&(!report.id||!['body_excerpt','search_snippet','title_only'].includes(report.comparison_basis)))throw new Error('보도 비교 ID·범위 누락');
+  for(const point of points){
+    if(!['common','difference'].includes(point.kind)||!['topic','event','actors','time','figures','attribution','focus','context'].includes(point.aspect))throw new Error('보도 비교 유형 오류');
+    for(const quote of [point.article_quote,point.related_quote])if(typeof quote!=='string'||Array.from(quote.trim()).length<8||Array.from(quote).length>600)throw new Error('보도 비교 인용 오류');
+  }
+}
 export function validatePreview(p) {
   rejectLegacy(p);
   if (!envelope(p) || typeof p.summary !== 'string' || typeof p.headline_difference !== 'string' || typeof p.one_line_caution !== 'string' || !Array.isArray(p.major_evidence) || !Array.isArray(p.sources)) throw new Error('미리보기 응답 형식 오류');
@@ -65,6 +78,7 @@ export function validateSelection(r) {
 export function validateAnalysis(a) {
   if (!envelope(a) || a.schema_version !== 'source-tracing-v1' || !a.article || typeof a.one_line_summary !== 'string' || !Array.isArray(a.claims) || !Array.isArray(a.sources) || !Array.isArray(a.evidence_mentions) || !Array.isArray(a.context_timeline) || !Array.isArray(a.related_articles) || !decision(a.caution)) throw new Error('분석 응답 형식이 올바르지 않습니다.');
   const ids = new Set(a.sources.map(s => s.id));
+  for(const report of a.related_articles)validateRelatedReport(report);
   for (const s of a.sources) if (!source(s)) throw new Error('출처 응답 형식 오류');
   for (const c of a.claims) if (!sourceStates.includes(c.source_status) || !decision(c.caution) || !Array.isArray(c.source_ids) || c.source_ids.some(id => !ids.has(id))) throw new Error('주장 출처 참조 오류');
   const claims=new Set(a.claims.map(c=>c.id));

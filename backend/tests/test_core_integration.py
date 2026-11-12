@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from app import main
-from app.clients import Gemini, Tavily
+from app.clients import Gemini, Tavily, provider_failure
 from app.errors import ProviderError
 from app.models import AnalyzeRequest, Article, ArticleAnalysis, ArticleContext, Extraction
 from app.service import Analyzer, body_hash
@@ -82,6 +82,42 @@ def test_tracking_parameters_do_not_split_the_same_body_metadata_cache():
         b=await analyzer.analyze(tracked)
         assert a.article_id==b.article_id and analyzer.llm.calls==2
     asyncio.run(scenario())
+
+
+def test_no_source_search_needed_still_reuses_article_result():
+    async def scenario():
+        analyzer = Analyzer(None, None, mode='mock')
+        payload = demo_request().model_copy(update={
+            'title': '공원 개방 기사', 'page_text': '공원이 오늘 개방되었다. 시민들이 공원을 이용하고 있다.',
+            'article_context': ArticleContext(),
+        })
+        calls = 0
+        generate = analyzer.llm.generate
+        async def counted(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return await generate(*args, **kwargs)
+        analyzer.llm.generate = counted
+        first = await analyzer.analyze(payload)
+        second = await analyzer.analyze(payload)
+        assert first.search_status == 'not_run' and not first.search_errors
+        assert any('검색을 실행하지 않았습니다' in reason for reason in first.caution.reasons)
+        assert not any('실패' in reason for reason in first.caution.reasons)
+        assert calls == 1 and second.analyzed_at == first.analyzed_at
+        assert analyzer.lookup(first.article_id) is not None
+        await analyzer.analyze(payload.model_copy(update={'page_text': payload.page_text + ' 운영 시간은 별도로 안내한다.'}))
+        assert calls == 2
+    asyncio.run(scenario())
+
+
+def test_lookup_validates_url_before_searching_empty_or_populated_cache(monkeypatch):
+    analyzer = Analyzer(None, None, mode='mock')
+    monkeypatch.setattr(main, 'analyzer', analyzer)
+    with TestClient(main.app) as client:
+        assert client.get('/api/articles/missing', params={'url': 'javascript:invalid'}).status_code == 422
+        result = client.post('/api/articles/analyze', json=demo_request().model_dump(mode='json')).json()
+        assert client.get('/api/articles/'+result['article_id'], params={'url': 'javascript:invalid'}).status_code == 422
+        assert client.get('/api/articles/missing', params={'url': 'https://news.example/1'}).status_code == 404
 
 
 class SnippetSearch(FakeSearch):
@@ -182,8 +218,43 @@ def test_gemini_sdk_structured_config_path_without_network(monkeypatch):
             captured.update(kwargs)
             return SimpleNamespace(text=json.dumps({'summary':'시연','claims':[],'evidence_mentions':[],'headline_difference':'미확인'}))
     monkeypatch.setenv('GEMINI_API_KEY','demo-test-key');monkeypatch.setenv('LLM_MODEL','demo-model')
-    monkeypatch.setattr(genai,'Client',lambda **kwargs:SimpleNamespace(aio=FakeAsync()))
+    def client(**kwargs):
+        captured['client_options'] = kwargs['http_options']
+        return SimpleNamespace(aio=FakeAsync())
+    monkeypatch.setattr(genai,'Client',client)
     result=asyncio.run(Gemini().generate('instruction',{'body':'본문'},Extraction))
     assert result.summary=='시연'
     assert captured['config'].response_mime_type=='application/json'
     assert captured['config'].response_json_schema['properties']['claims']
+    assert captured['client_options']['retry_options']['attempts'] == 1
+
+
+def test_gemini_permission_failure_has_actionable_code_without_provider_secrets(monkeypatch):
+    from google.genai.errors import ClientError
+    error = provider_failure(ClientError(403, {'error': {'status': 'PERMISSION_DENIED',
+        'message': 'sensitive-provider-key-and-request'}}), 'gemini')
+    class FailingAnalyzer:
+        async def analyze(self, request):
+            raise error
+    monkeypatch.setattr(main, 'analyzer', FailingAnalyzer())
+    with TestClient(main.app) as client:
+        response = client.post('/api/articles/analyze', json=request().model_dump(mode='json'))
+        assert response.status_code == 502
+        assert response.json()['error']['code'] == 'permission_denied'
+        assert 'sensitive-provider' not in response.text and 'PERMISSION_DENIED' not in response.text
+
+
+def test_upstream_service_outage_is_distinct_and_preserves_safe_retry_header(monkeypatch):
+    response = httpx.Response(503, request=httpx.Request('POST', 'https://provider.example/'),
+                              headers={'Retry-After': '23'})
+    raw = httpx.HTTPStatusError('sensitive-request-content', request=response.request, response=response)
+    error = provider_failure(raw, 'gemini')
+    class FailingAnalyzer:
+        async def analyze(self, request):
+            raise error
+    monkeypatch.setattr(main, 'analyzer', FailingAnalyzer())
+    with TestClient(main.app) as client:
+        response = client.post('/api/articles/analyze', json=request().model_dump(mode='json'))
+        assert response.status_code == 503 and response.headers['Retry-After'] == '23'
+        assert response.json()['error']['code'] == 'provider_unavailable'
+        assert 'sensitive-request-content' not in response.text

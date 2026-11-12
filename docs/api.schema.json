@@ -736,6 +736,11 @@
       "RelatedArticle": {
         "additionalProperties": false,
         "properties": {
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
           "url": {
             "format": "uri",
             "maxLength": 2083,
@@ -803,6 +808,36 @@
             ],
             "default": null,
             "title": "Summary"
+          },
+          "comparison_basis": {
+            "default": "unknown",
+            "enum": [
+              "body_excerpt",
+              "search_snippet",
+              "title_only",
+              "unknown"
+            ],
+            "title": "Comparison Basis",
+            "type": "string"
+          },
+          "comparison_status": {
+            "default": "not_compared",
+            "enum": [
+              "not_compared",
+              "compared",
+              "insufficient",
+              "failed"
+            ],
+            "title": "Comparison Status",
+            "type": "string"
+          },
+          "comparison_points": {
+            "items": {
+              "$ref": "#/$defs/ReportComparisonPoint"
+            },
+            "maxItems": 6,
+            "title": "Comparison Points",
+            "type": "array"
           }
         },
         "required": [
@@ -811,6 +846,53 @@
           "differences_summary"
         ],
         "title": "RelatedArticle",
+        "type": "object"
+      },
+      "ReportComparisonPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "common",
+              "difference"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "aspect": {
+            "enum": [
+              "topic",
+              "event",
+              "actors",
+              "time",
+              "figures",
+              "attribution",
+              "focus",
+              "context"
+            ],
+            "title": "Aspect",
+            "type": "string"
+          },
+          "article_quote": {
+            "maxLength": 600,
+            "minLength": 8,
+            "title": "Article Quote",
+            "type": "string"
+          },
+          "related_quote": {
+            "maxLength": 600,
+            "minLength": 8,
+            "title": "Related Quote",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "aspect",
+          "article_quote",
+          "related_quote"
+        ],
+        "title": "ReportComparisonPoint",
         "type": "object"
       },
       "SectionState": {
@@ -1170,7 +1252,7 @@
         "type": "string"
       },
       "data_version": {
-        "default": "source-tracing-v1.1",
+        "default": "source-tracing-v1.3",
         "title": "Data Version",
         "type": "string"
       },
@@ -2821,7 +2903,7 @@
         "type": "string"
       },
       "data_version": {
-        "default": "source-tracing-v1.1",
+        "default": "source-tracing-v1.3",
         "title": "Data Version",
         "type": "string"
       },

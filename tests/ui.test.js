@@ -58,13 +58,81 @@ test('related news is diversified by publisher and demo URLs are not clickable',
   const document=new JSDOM('<main></main>').window.document;
   const a=structuredClone(fixture);a.related_articles.push({...a.related_articles[0],title:'duplicate'});
   renderAnalysis(document.querySelector('main'),a);
-  assert.equal(document.querySelectorAll('[data-section="related"] #summary-related .source-row').length,1);
+  assert.equal(document.querySelectorAll('#summary-related .related-row').length,fixture.related_articles.length);
   assert.equal(document.querySelectorAll('a').length,0);
+});
+test('report comparisons show scope and paired excerpts without changing the six-card controls',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
+  const data=structuredClone(fixture),report=data.related_articles[0];
+  report.comparison_points[0].related_quote='<script>alert("unsafe")</script>를 인용한 보도';
+  renderAnalysis(root,data,new Set(['related','claims']));
+  const card=root.querySelector('[data-section="related"]');
+  assert.match(card.textContent,/검색 요약 범위 비교/);
+  assert.match(card.textContent,/공통으로 다룬 내용/);
+  assert.match(card.textContent,/표현·강조가 다른 부분/);
+  assert.match(card.textContent,/현재 기사/);assert.match(card.textContent,/비교 보도/);
+  assert.match(card.textContent,/공통 보도는 사실 확인을 뜻하지/);
+  assert.equal(card.querySelectorAll('script').length,0);
+  assert.equal(root.querySelectorAll('[data-toggle]').length,6);
+  card.querySelector('[data-toggle]').click();
+  assert.equal(root.querySelector('[data-toggle="claims"]').getAttribute('aria-expanded'),'true');
+  assert.equal(root.querySelector('#details-related').hidden,true);
+});
+test('comparison failure and insufficient data keep links and cannot become truth verdicts',()=>{
+  for(const status of ['failed','insufficient']){
+    const document=new JSDOM('<main></main>').window.document,data=structuredClone(fixture);
+    Object.assign(data.related_articles[0],{comparison_status:status,comparison_points:[]});
+    validateAnalysis(data);renderAnalysis(document.querySelector('main'),data,new Set(['related']));
+    assert.match(document.querySelector('#details-related').textContent,status==='failed'?/보도 비교를 완료하지 못했습니다/:/비교할 구절을 확인하지 못했습니다/);
+    assert.match(document.querySelector('#details-related').textContent,/가상방송/);
+  }
+  for(const mutate of [r=>r.comparison_points[0].kind='supports',r=>r.comparison_basis='full_verified_text',r=>r.comparison_points[0].related_quote='',r=>r.comparison_points=[]]){
+    const data=structuredClone(fixture);mutate(data.related_articles[0]);assert.throws(()=>validateAnalysis(data));
+  }
 });
 test('backend URL accepts local HTTP or HTTPS and rejects credentials/non-HTTP',()=>{
   assert.equal(backendUrl(),'http://127.0.0.1:8000');
   assert.equal(backendUrl('https://newscheck.example'),'https://newscheck.example');
   for(const url of ['http://remote.example','file:///secret','https://user:pass@example.com','https://example.com/path']) assert.throws(()=>backendUrl(url));
+});
+test('summary uses up to two sentence bullets and metadata appears once beside it',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),data=structuredClone(fixture);
+  data.one_line_summary='지원 규모는 3.1조 원이다.\n시행은 검토 중이다.\n세 번째 줄은 표시하지 않는다.';
+  renderAnalysis(root,data);
+  assert.equal(root.querySelectorAll('.summary-list li').length,2);
+  assert.equal(root.querySelector('.summary-list li').textContent,'지원 규모는 3.1조 원이다.');
+  assert.equal(root.querySelectorAll('.overview-grid > [data-section="metadata"]').length,1);
+  assert.equal(root.querySelectorAll('.analysis-grid [data-section="metadata"]').length,0);
+  assert.equal(root.querySelectorAll('[data-toggle]').length,6);
+  data.one_line_summary='지원 규모는 3.1조 원이다. 시행은 검토 중이다.';
+  renderAnalysis(root,data);
+  assert.equal(root.querySelectorAll('.summary-list li').length,2);
+  assert.ok(root.querySelector('.summary-list li').textContent.includes('3.1조'));
+});
+test('background renders short boxes and arrows, with a single real-event fallback',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),data=structuredClone(fixture);
+  renderAnalysis(root,data);
+  assert.equal(root.querySelectorAll('#summary-context .context-step').length,2);
+  assert.equal(root.querySelectorAll('#summary-context .context-arrow').length,1);
+  data.context_timeline=[];
+  data.event={description:'기사에서 확인한 핵심 사건을 보여주는 문장입니다.',article_quote:'기사에서 확인한 핵심 사건을 보여주는 문장입니다.',time:null,location:null};
+  renderAnalysis(root,data);
+  assert.equal(root.querySelectorAll('#summary-context .context-step').length,1);
+  assert.equal(root.querySelectorAll('#summary-context .context-arrow').length,0);
+  data.event={};renderAnalysis(root,data);
+  assert.equal(root.querySelectorAll('.context-step').length,0);
+  assert.match(root.querySelector('#summary-context').textContent,/배경 정보가 없습니다/);
+});
+test('related article titles and publishers stay in compact rows and comparisons start collapsed',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
+  renderAnalysis(root,fixture,new Set(['related']));
+  assert.equal(root.querySelectorAll('#summary-related .related-row').length,fixture.related_articles.length);
+  assert.equal(root.querySelectorAll('#summary-related .report-comparison').length,0);
+  assert.equal(root.querySelectorAll('#details-related .report-detail[open]').length,0);
+  assert.equal(root.querySelectorAll('#details-related .report-detail > summary').length,fixture.related_articles.length);
+  const row=root.querySelector('#summary-related .related-row');
+  assert.ok(row.querySelector('.related-title').textContent.includes(fixture.related_articles[0].title));
+  assert.equal(row.querySelector('.related-press').textContent,fixture.related_articles[0].publisher);
 });
 test('six cards display loading, errors and retry while preserving page metadata',()=>{
   const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');

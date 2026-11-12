@@ -38,7 +38,44 @@ try {
   await toggles.nth(3).click();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await fs.mkdir('.tools',{recursive:true});
+  await page.evaluate(()=>scrollTo(0,0));
   await page.screenshot({path:'.tools/panel.png',fullPage:true});
+  // Compact overview: summary on the left, smaller metadata on the right.
+  const narrowContext=await page.locator('[data-section="context"]').boundingBox();
+  const narrowMetadata=await page.locator('[data-section="metadata"]').boundingBox();
+  const narrowSummary=await page.locator('.analysis-summary').boundingBox();
+  assert.equal(narrowMetadata.y,narrowSummary.y);assert.ok(narrowMetadata.x>narrowSummary.x);
+  assert.ok(narrowMetadata.width<narrowSummary.width);assert.ok(narrowContext.y>=narrowMetadata.y+narrowMetadata.height);
+  assert.equal(await page.locator('.summary-list > li').count(),2);
+  assert.equal(await page.locator('#summary-context .context-step').count(),2);
+  assert.equal(await page.locator('#summary-context .context-arrow').count(),1);
+  for(const row of await page.locator('#summary-related .related-row').all())assert.ok((await row.boundingBox()).height<45);
+  await page.setViewportSize({width:880,height:1000});
+  const boxes=await Promise.all(['context','metadata','claims','evidence','cautions','related'].map(id=>page.locator('[data-section="'+id+'"]').boundingBox()));
+  const wideSummary=await page.locator('.analysis-summary').boundingBox();
+  assert.equal(boxes[1].y,wideSummary.y);assert.ok(boxes[1].width<wideSummary.width);
+  assert.ok(boxes[0].y>=boxes[1].y+boxes[1].height);
+  assert.equal(boxes[2].x,boxes[0].x);assert.ok(boxes[3].x>boxes[2].x);
+  assert.equal(boxes[4].x,boxes[0].x);assert.equal(boxes[4].width,boxes[0].width);
+  assert.equal(boxes[5].width,boxes[4].width);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.screenshot({path:'.tools/panel-reference-layout.png',fullPage:true});
+  await page.locator('[data-toggle="related"]').click();
+  const reports=page.locator('#details-related .report-detail');
+  assert.equal(await page.locator('#details-related .report-detail[open]').count(),0);
+  await reports.first().locator('summary').click();
+  assert.equal(await reports.first().locator('.report-body').isVisible(),true);
+  assert.equal(await reports.nth(1).locator('.report-body').isVisible(),false);
+  await page.screenshot({path:'.tools/panel-related-detail.png',fullPage:true});
+  await page.locator('[data-toggle="related"]').click();
+  await page.setViewportSize({width:320,height:900});
+  const smallSummary=await page.locator('.analysis-summary').boundingBox();
+  const smallMetadata=await page.locator('[data-section="metadata"]').boundingBox();
+  assert.equal(smallMetadata.y,smallSummary.y);assert.ok(smallMetadata.width<smallSummary.width);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.evaluate(()=>scrollTo(0,0));
+  await page.screenshot({path:'.tools/panel-compact-320.png',fullPage:true});
+  await page.setViewportSize({width:440,height:900});
   // Exercise content-script events with deterministic server responses, not real API calls.
   const fixture=JSON.parse(await fs.readFile(path.join(root,'data/demo.json'),'utf8'));
   const origin='http://127.0.0.1:'+server.address().port;
@@ -83,7 +120,7 @@ try {
   assert.ok(request.payload.page_text.includes(selectedText));
   assert.ok(request.payload.surrounding_text.includes(selectedText));
   assert.deepEqual(errors,[]);
-  console.log('Chrome headless: 6 independent cards, keyboard, refresh, 440px layout, Hover debounce and selected-sentence requests passed.');
+  console.log('Chrome headless: compact overview at 320/440/880px, two summary bullets, context boxes/arrows, one-line news rows, independent cards, Hover and selection passed.');
 }finally{
   await browser?.close();
   await new Promise(resolve=>server.close(resolve));

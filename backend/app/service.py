@@ -10,8 +10,9 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from .models import (Article, ArticleAnalysis, Claim, Decision, Extraction, Source, RelatedArticle,
                      SourceFacts, SourceReviews, AnalyzeRequest, SelectionAnalysis, TextSpan,
-                     CautionDetail, ArticleContext, EventInfo, PipelineError, SectionState)
-from .prompts import EXTRACT, TRACE
+                     CautionDetail, ArticleContext, EventInfo, PipelineError, SectionState, ReportComparisons)
+from .prompts import EXTRACT, TRACE, COMPARE_REPORTS
+from .report_comparison import comparison_material, apply_comparisons
 from .errors import ProviderError
 
 
@@ -111,8 +112,12 @@ def claim_decision(claim, mentions, sources, search_status):
     decisions = [s.caution for s in sources]
     if reasons:
         decisions.append(Decision(status='caution', reasons=reasons))
-    if search_status != 'completed' or claim.source_status == 'unknown':
-        decisions.append(Decision(status='unknown', reasons=['검색 실패 또는 출처 관계 정보 부족으로 분석이 불완전합니다.']))
+    if search_status == 'failed':
+        decisions.append(Decision(status='unknown', reasons=['원출처 검색 요청이 실패하여 분석이 불완전합니다.']))
+    elif search_status == 'not_run':
+        decisions.append(Decision(status='unknown', reasons=['기사에서 검색할 근거를 확보하지 못해 원출처 검색을 실행하지 않았습니다.']))
+    elif claim.source_status == 'unknown':
+        decisions.append(Decision(status='unknown', reasons=['검색된 자료와 기사 출처의 관계를 확인할 정보가 부족합니다.']))
     result = combine_decisions(decisions)
     for detail in result.details:
         detail.claim_ids = list(dict.fromkeys(detail.claim_ids + [claim.id]))
@@ -157,14 +162,15 @@ class Analyzer:
             metadata['url'] = normalize_url(request.url)
         return body_hash(json.dumps([normalize_url(request.url), body_hash(request.page_text),
             request.title, metadata, clean_context(request.article_context,request.page_text).model_dump(mode='json'),
-            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.1', focus], ensure_ascii=False))
+            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.3', focus], ensure_ascii=False))
 
     def lookup(self, article_id, url=None):
+        url = normalize_url(url) if url is not None else None
         for key, (expires, result) in list(self.cache.items()):
             if expires <= time.monotonic():
                 self.cache.pop(key, None)
                 continue
-            if result.article_id == article_id and (url is None or normalize_url(result.article.url) == normalize_url(url)):
+            if result.article_id == article_id and (url is None or normalize_url(result.article.url) == url):
                 return result.model_copy(deep=True)
         return None
 
@@ -184,7 +190,7 @@ class Analyzer:
         task = self.inflight[key]
         try:
             result = await asyncio.shield(task)
-            if result.search_status == 'completed' and not result.search_errors:
+            if result.search_status != 'failed' and not result.search_errors:
                 if len(self.cache) >= 128:
                     self.cache.pop(next(iter(self.cache)))
                 self.cache[key] = (time.monotonic() + self.ttl, result)
@@ -299,7 +305,7 @@ class Analyzer:
             decision = combine_decisions([decision,Decision(status='caution',reasons=['본문 길이 제한으로 추출된 앞부분만 분석했습니다. 전체 기사를 추가 확인해 주세요.'])])
         if search_errors:
             decision = combine_decisions([decision, Decision(status='unknown', reasons=search_errors)])
-        related = []
+        related, report_materials = [], {}
         if request.title and not focus:
             try:
                 rows = await self.search.search(request.title[:200], topic='news')
@@ -314,15 +320,35 @@ class Analyzer:
                     if host in hosts or url == normalize_url(request.url):
                         continue
                     hosts.add(host)
-                    related.append(RelatedArticle(url=url, title=str(row.get('title') or ''),
+                    report_id = 'report_' + body_hash(url)[:16]
+                    material, basis = comparison_material(row)
+                    report_materials[report_id] = material
+                    related.append(RelatedArticle(id=report_id, url=url, title=str(row.get('title') or ''),
                         publisher=publisher, published_at=row.get('published_date'),
                         topic=request.title, summary=str(row.get('content') or '')[:400] or None,
+                        comparison_basis=basis,
                         differences_summary='검색 결과 요약(기사 본문 비교 전): ' + str(row.get('content') or '내용 차이 미확인')[:250]))
-                    if len(related) == 3:
+                    if len(related) == 5:
                         break
             except Exception as exc:
                 record_error(exc,'related_search','tavily')
                 search_errors.append('관련 기사 검색이 실패했습니다. 원출처 검색 상태와는 별개입니다.')
+        if related:
+            comparison_reports = related[:3]
+            try:
+                comparisons = await self.llm.generate(COMPARE_REPORTS, {
+                    'body': request.page_text,
+                    'reports': [{'id': r.id, 'title': r.title, 'basis': r.comparison_basis,
+                                 'text': report_materials[r.id]} for r in comparison_reports],
+                }, ReportComparisons)
+                apply_comparisons(comparison_reports, report_materials, request.page_text, comparisons)
+            except Exception as exc:
+                record_error(exc, 'related_comparison', 'gemini')
+                search_errors.append('다른 보도와의 비교를 완료하지 못했습니다. 관련 기사 목록은 유지합니다.')
+                for report in comparison_reports:
+                    report.comparison_status = 'failed'
+                    report.comparison_points = []
+                    report.differences_summary = '보도 비교를 완료하지 못했습니다. 원문을 직접 확인해 주세요.'
         metadata = request.metadata or Article(url=request.url, title=request.title)
         metadata = Article.model_validate({**metadata.model_dump(mode='json'),'url':normalize_url(request.url),'title':request.title or metadata.title,
             'event_time':extracted.event.time or metadata.event_time,'event_location':extracted.event.location or metadata.event_location})
@@ -332,7 +358,7 @@ class Analyzer:
             'claims':SectionState(status='ready' if claims else 'empty',message=None if claims else '원문과 연결된 주장을 추출하지 못했습니다.'),
             'evidence':SectionState(status='error' if any(e.phase in ('source_search','document_fetch','source_review') for e in pipeline_errors) else 'partial' if not sources or any(s.unknown_fields for s in sources) else 'ready'),
             'cautions':SectionState(status='partial' if decision.status=='unknown' else 'ready'),
-            'related':SectionState(status='error' if any(e.phase=='related_search' for e in pipeline_errors) else 'ready' if related else 'empty')}
+            'related':SectionState(status='error' if any(e.phase=='related_search' for e in pipeline_errors) else 'partial' if related and any(r.comparison_status!='compared' for r in related) else 'ready' if related else 'empty')}
         return ArticleAnalysis(article_id=key[:24], body_hash=body_hash(request.page_text),
             analysis_status='partial' if request.article_context.body_truncated or search_errors or decision.status == 'unknown' or any(s.unknown_fields for s in sources) else 'complete',
             is_demo=self.mode=='mock', article=metadata, one_line_summary=extracted.summary, claims=claims, evidence_mentions=mentions,

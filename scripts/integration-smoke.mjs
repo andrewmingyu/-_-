@@ -96,8 +96,20 @@ try{
   assert.ok(full.caution.details.some(d=>d.source_ids.length));
   assert.equal(full.claims[0].original_text,results[0].message.payload.page_text.slice(full.claims[0].article_span.start,full.claims[0].article_span.end));
   assert.ok(full.context_timeline[0].source_ids.length);
+  assert.equal(full.related_articles[0].comparison_status,'compared');
+  assert.equal(full.related_articles[0].comparison_basis,'search_snippet');
+  assert.ok(full.related_articles[0].comparison_points.some(point=>point.kind==='common'));
+  assert.ok(full.related_articles[0].comparison_points.some(point=>point.kind==='difference'));
   assert.equal(counts.analyze,1);
   for(const id of ['context','metadata','claims','evidence','cautions','related'])await panel.locator('[data-toggle="'+id+'"]').click();
+  await panel.locator('#details-related .report-detail > summary').first().click();
+  assert.equal(await panel.locator('#details-related .report-pair').count(),2);
+  assert.ok((await panel.locator('#details-related').innerText()).includes('검색 요약 범위 비교'));
+  await panel.locator('[data-section="related"]').screenshot({path:'.tools/report-comparison.png'});
+  await panel.setViewportSize({width:320,height:900});
+  assert.ok(await panel.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await panel.locator('[data-section="related"]').screenshot({path:'.tools/report-comparison-narrow.png'});
+  await panel.setViewportSize({width:440,height:900});
   await panel.screenshot({path:'.tools/integration-panel.png',fullPage:true});
   // B: short Hover does nothing; warm Hover reads GET cache without collecting HTML again.
   await article.addScriptTag({url:moduleBase+'content.js'});

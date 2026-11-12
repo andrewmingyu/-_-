@@ -11,16 +11,21 @@
     "author": "가상기자",
     "published_at": "2026-11-09T10:24:00+09:00",
     "updated_at": null,
-    "event_time": "검토 단계",
+    "event_time": null,
     "event_location": null,
     "author_profile_url": null
   },
-  "one_line_summary": "지원제도 개편 검토와 업계의 전망을 다루는 시연용 기사입니다.",
+  "one_line_summary": "가상정책연구소가 지원제도 개편을 검토하고 있습니다.\n익명 발언과 미래 예측은 원출처를 추가 확인해야 합니다.",
   "context_timeline": [
     {
-      "date": "2026년",
-      "description": "지원제도 개편 검토",
-      "article_quote": "지원제도 개편 검토"
+      "date": "시점 미확인",
+      "description": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다.",
+      "article_quote": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다."
+    },
+    {
+      "date": "시점 미확인",
+      "description": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다.",
+      "article_quote": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다."
     }
   ],
   "claims": [
@@ -151,13 +156,61 @@
       "title": "지원제도 검토 관련 보도 — 시연용",
       "publisher": "가상방송",
       "published_at": "2026-11-09",
-      "differences_summary": "이 보도는 검토 일정에 초점을 맞춘 가상 예시입니다.",
-      "independence": "독립적인 자료에 기반했는지 확인하지 못했습니다."
+      "differences_summary": "공통으로 다룬 항목: 보도 주제 / 표현·강조 차이: 강조점",
+      "independence": "독립적인 자료에 기반했는지 확인하지 못했습니다.",
+      "id": "report_demo",
+      "topic": "지원제도 검토",
+      "summary": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다. 이 가상 보도는 검토 일정과 후속 안내를 중심으로 전한다.",
+      "comparison_basis": "search_snippet",
+      "comparison_status": "compared",
+      "comparison_points": [
+        {
+          "kind": "common",
+          "aspect": "topic",
+          "article_quote": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다.",
+          "related_quote": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다."
+        },
+        {
+          "kind": "difference",
+          "aspect": "focus",
+          "article_quote": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다.",
+          "related_quote": "이 가상 보도는 검토 일정과 후속 안내를 중심으로 전한다."
+        }
+      ]
+    },
+    {
+      "url": "https://report2.example/demo-news",
+      "title": "지원제도 검토, 소비자 안내 과제는 — 시연용",
+      "publisher": "가상경제",
+      "published_at": "2026-11-09",
+      "differences_summary": "내용 비교 전",
+      "independence": "독립적인 자료에 기반했는지 확인하지 못했습니다.",
+      "id": "report_demo_2",
+      "topic": "지원제도 검토",
+      "summary": "추가 비교 전인 가상 기사입니다.",
+      "comparison_basis": "search_snippet",
+      "comparison_status": "not_compared",
+      "comparison_points": []
+    },
+    {
+      "url": "https://report3.example/demo-news",
+      "title": "지원제도 후속 발표 일정 살펴보기 — 시연용",
+      "publisher": "가상통신",
+      "published_at": "2026-11-09",
+      "differences_summary": "내용 비교 전",
+      "independence": "독립적인 자료에 기반했는지 확인하지 못했습니다.",
+      "id": "report_demo_3",
+      "topic": "지원제도 검토",
+      "summary": "추가 비교 전인 가상 기사입니다.",
+      "comparison_basis": "search_snippet",
+      "comparison_status": "not_compared",
+      "comparison_points": []
     }
   ],
   "headline_difference": "제목과 본문 모두 검토 단계라고 표현하는 시연입니다. 사실 여부의 판정은 제공하지 않습니다.",
   "final_comment": "근거의 원출처와 확인하지 못한 속성을 정리한 시연용 예시입니다.",
   "search_status": "completed",
   "search_errors": [],
-  "analyzed_at": "2026-11-11T00:00:00Z"
+  "analyzed_at": "2026-11-11T00:00:00Z",
+  "data_version": "source-tracing-v1.3"
 }

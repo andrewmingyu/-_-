@@ -2,12 +2,25 @@
 import json
 import re
 from pathlib import Path
-from .models import Claim, EventInfo, Extraction, SourceReviews, TimelineItem
+from .models import Claim, EventInfo, Extraction, SourceReviews, TimelineItem, ReportComparisons
 
 FIXTURE = json.loads((Path(__file__).resolve().parents[2] / 'fixtures/mock_source_documents.json').read_text(encoding='utf-8'))
 
 class MockLLM:
     async def generate(self, instruction, payload, schema):
+        if schema is ReportComparisons:
+            reports = []
+            for report in payload['reports']:
+                points = []
+                phrase = '지원제도 개편을 검토 중'
+                if phrase in payload['body'] and phrase in report['text']:
+                    points.append({'kind':'common','aspect':'topic','article_quote':phrase,'related_quote':phrase})
+                current = '지원 규모와 시행 시점은 아직 정해지지 않았다고 적었다.'
+                other = '시행 시점은 미정이며 검토 일정에 초점을 맞춘 시연 보도다.'
+                if current in payload['body'] and other in report['text']:
+                    points.append({'kind':'difference','aspect':'focus','article_quote':current,'related_quote':other})
+                reports.append({'report_id':report['id'],'points':points})
+            return ReportComparisons(reports=reports)
         if schema is Extraction:
             text = payload['body']
             focus = payload.get('selected_text')
@@ -33,7 +46,7 @@ class MockLLM:
                     event = EventInfo(description=sentence, article_quote=sentence, time=match.group(1), location=match.group(2))
                     timeline = [TimelineItem(date=match.group(1),description=sentence,article_quote=sentence)]
                     break
-            return Extraction(summary='시연용 원문 추출: ' + (' '.join(selected[:2]))[:450],
+            return Extraction(summary='\n'.join(selected[:2]),
                 claims=claims,evidence_mentions=mentions,context_timeline=timeline,event=event,
                 headline_difference='시연 모드에서는 제목과 본문 표현의 차이를 자동 평가하지 않습니다.')
         reviews = []

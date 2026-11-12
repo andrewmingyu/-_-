@@ -13,11 +13,21 @@ def provider_failure(exc, provider):
     if isinstance(exc, (ValidationError, ValueError)):
         return ProviderError('invalid_response', provider)
     status = getattr(exc, 'code', None) or getattr(getattr(exc, 'response', None), 'status_code', None)
-    headers = getattr(getattr(exc, 'response', None), 'headers', {})
+    try:
+        status = int(status)
+    except (TypeError, ValueError):
+        status = None
+    headers = getattr(getattr(exc, 'response', None), 'headers', {}) or {}
     if status == 429:
         return ProviderError('rate_limited', provider, retry_after(headers.get('Retry-After')))
     if status in (408,504):
         return ProviderError('timeout',provider)
+    if status in (400,401,402,403,404):
+        code = {400:'invalid_request',401:'authentication_failed',402:'billing_required',
+                403:'permission_denied',404:'request_not_found'}[status]
+        return ProviderError(code, provider)
+    if status in (500,502,503):
+        return ProviderError('provider_unavailable', provider, retry_after(headers.get('Retry-After')))
     if isinstance(exc, httpx.RequestError):
         return ProviderError('network_error', provider)
     return ProviderError('provider_error', provider)
@@ -30,7 +40,7 @@ class Gemini:
         from google import genai
         from google.genai import types
         try:
-            async with genai.Client(api_key=key, http_options={'timeout': 45000}).aio as client:
+            async with genai.Client(api_key=key, http_options={'timeout': 45000, 'retry_options': {'attempts': 1}}).aio as client:
                 response = await client.models.generate_content(
                     model=model, contents=instruction + '\nDATA:\n' + json.dumps(payload, ensure_ascii=False),
                     config=types.GenerateContentConfig(system_instruction=SYSTEM, temperature=0,

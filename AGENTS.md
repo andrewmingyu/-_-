@@ -23,4 +23,6 @@ Latest user instructions take precedence. This repository is the canonical devel
 - Mock APIs must run the same Analyzer pipeline with deterministic providers and bind IDs/hashes to input; reserve the fixed fixture for the standalone UI demo. No external calls in mock/integration tests.
 - Maintain additive v1 defaults and data_version. Ground event/span/caution links; namespace new selection claims and preserve parent analysis IDs.
 - Run npm run test:integration for changes crossing extraction, worker, API, cache and UI; never equate replay adapters with an installed-extension/live-service test.
-- Respect the current task Git boundary: the user authorized committing, pushing feature/core-flow-integration and opening a PR. Merge and Issues remain outside this task's scope; later explicit user instructions may supersede this boundary.
+- Reporting comparisons describe coverage overlap and differences with paired literal quotations. Never convert them into truth, support/contradiction, credibility or independence judgments. Label the available material as body excerpt, search snippet or title only.
+- Current report-comparison changes stay local on feature/report-comparison. The earlier Push/PR authorization applied to feature/core-flow-integration; external changes must stay within the user's current scope.
+- Keep summary bullets next to a smaller top-right metadata card, context boxes/arrows and compact one-line related news. Preserve six independent card controls and disclose report comparisons inside related news details.

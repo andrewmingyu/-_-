@@ -21,6 +21,7 @@ npm.cmd test
 npm.cmd run typecheck
 npm.cmd run build
 npm.cmd run test:browser
+npm.cmd run test:integration
 .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe scripts/smoke_backend.py
 git diff --check
@@ -46,6 +47,6 @@ API 키나 실제 기사 전문을 PR 본문·로그에 붙이지 않는다.
 ## 병합
 원격 기본 브랜치와 충돌 여부, checks, review, ruleset/보호 규칙을 확인한다.
 필수 리뷰·검사를 충족한 경우에만 GitHub PR로 병합한다. 규칙·관리자 제한·실패한 검사를 우회하지 않는다.
-이 저장소에서 이번 기준 통합은 사용자가 명시적으로 Push·PR·Merge를 허용했다. 이후 외부 변경은 해당 작업의 승인 범위를 따른다.
+Push·PR·Merge 여부는 현재 작업의 사용자 요청 범위를 따른다. 이전 작업에서의 병합 허용을 새 작업의 허용으로 간주하지 않는다.
 병합 후 main을 fetch/pull --ff-only로 갱신하고 테스트·타입·빌드·HTTP smoke를 다시 실행한다.
 병합 후 테스트 실패 시 성공으로 보고하지 않고 원인과 해결 상태를 기록한다.
