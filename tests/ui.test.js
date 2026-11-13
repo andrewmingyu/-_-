@@ -31,13 +31,24 @@ test('all displays use source states and a visible demo label, never a truth sco
   const html=document.body.innerHTML;
   assert.match(html,/시연용 예시/);
   assert.match(html,/원본 자료 확인/);
-  assert.doesNotMatch(html,/신뢰도|다른 보도와 일치|거짓 또는 오류|확인된 사실|\d+%/);
+  // 참고용 신뢰 지수 카드(.ncs)는 아래 별도 테스트에서 검사하고, 나머지 화면에는 점수 표현이 없어야 한다.
+  assert.doesNotMatch(html.replace(/<section class="card ncs[\s\S]*?<\/section>/,''),/신뢰도|다른 보도와 일치|거짓 또는 오류|확인된 사실|\d+%/);
   const preview=renderPreview({is_demo:true,summary:fixture.one_line_summary,major_evidence:fixture.evidence_mentions,sources:fixture.sources,headline_difference:fixture.headline_difference,one_line_caution:fixture.caution.reasons[0]});
   const selection=renderSelection({is_demo:true,claims:fixture.claims,sources:fixture.sources,caution:fixture.caution});
   for(const rendered of [preview,selection]) {
     assert.match(rendered,/시연용 예시/);
     assert.doesNotMatch(rendered,/신뢰도|반박됨|일부 확인|거짓 또는 오류/);
   }
+});
+test('the reference credibility card shows a level and its disclaimer, not a truth verdict',()=>{
+  const document=new JSDOM('<main></main>').window.document;
+  renderAnalysis(document.querySelector('main'),fixture);
+  const card=document.querySelector('.ncs');
+  assert.ok(card);
+  assert.match(card.textContent,/신뢰 높음|주의 필요|주의 요망|판단 보류/);
+  assert.match(card.textContent,/참고용 추정 점수/);
+  assert.match(card.textContent,/사실 여부를 판정한 것이 아니에요/);
+  assert.doesNotMatch(card.textContent,/거짓 또는 오류|확인된 사실|가짜 뉴스|허위/);
 });
 test('untrusted article text and URL schemes cannot create executable markup',()=>{
   const document=new JSDOM('<main></main>').window.document;

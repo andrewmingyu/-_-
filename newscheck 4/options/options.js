@@ -18,12 +18,14 @@ document.getElementById('clear-legacy').addEventListener('click', async () => {
   status.hidden = false; status.textContent = '이전 브라우저 API 키 설정을 삭제했습니다.';
 });
 const autoBadge = document.getElementById('autoBadge');
-chrome.storage.local.get('autoBadge').then(s => { autoBadge.checked = s.autoBadge !== false; });
-autoBadge.addEventListener('change', async () => {
-  await chrome.storage.local.set({ autoBadge: autoBadge.checked });
-  status.hidden = false; status.textContent = autoBadge.checked ? '자동 표시를 켰습니다.' : '자동 표시를 껐습니다.';
-});
-document.getElementById('allow-site').addEventListener('click', async () => {
+if (autoBadge) {
+  chrome.storage.local.get('autoBadge').then(s => { autoBadge.checked = s.autoBadge !== false; });
+  autoBadge.addEventListener('change', async () => {
+    await chrome.storage.local.set({ autoBadge: autoBadge.checked });
+    status.hidden = false; status.textContent = autoBadge.checked ? '자동 표시를 켰습니다.' : '자동 표시를 껐습니다.';
+  });
+}
+document.getElementById('allow-site')?.addEventListener('click', async () => {
   try {
     const host = document.getElementById('site').value.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
     if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(host)) throw new Error('도메인을 입력해 주세요. 예: khan.co.kr');
