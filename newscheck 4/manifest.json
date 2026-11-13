@@ -44,14 +44,13 @@
     "http://127.0.0.1/*",
     "http://localhost/*"
   ],
-  "optional_host_permissions": [
-    "https://*/*"
-  ],
   "content_scripts": [
     {
       "matches": [
         "https://news.naver.com/*",
-        "https://n.news.naver.com/*"
+        "https://n.news.naver.com/*",
+        "https://yonhapnewstv.co.kr/*",
+        "https://www.yonhapnewstv.co.kr/*"
       ],
       "js": [
         "content.js"
@@ -64,11 +63,14 @@
       "resources": [
         "lib/extract.js",
         "shared/article.js",
-        "shared/view.js"
+        "shared/view.js",
+        "shared/summary.js"
       ],
       "matches": [
         "https://news.naver.com/*",
-        "https://n.news.naver.com/*"
+        "https://n.news.naver.com/*",
+        "https://yonhapnewstv.co.kr/*",
+        "https://www.yonhapnewstv.co.kr/*"
       ]
     }
   ]

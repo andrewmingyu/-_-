@@ -1,4 +1,25 @@
 ﻿# 기본 기능 및 통합 검증 결과
+## 2026-11-13 팝업 회귀 수정 검증
+추가 검증: 선택 응답을 의도적으로 보류하고 마우스를 팝업 밖·기사 링크 위로 이동시켜도 선택 분석 화면이 유지됨을 확인한다. 결과 화면의 내부 클릭·마우스 이탈은 유지, 바깥 클릭은 닫기이며, 대기 중 닫힌 팝업을 늦은 응답이 다시 열지 않는다. Hover 결과의 마우스 이탈 닫기는 유지한다. 수정 전에는 이동 후 350ms 안에 선택 팝업이 사라지는 실패를 재현했다. 해당 검사는 test:browser와 실제 MV3 test:extension에 포함한다.
+- 기준: PR #5 및 다크모드 수정 f404edf에서 분기한 로컬 fix/hover-selection-popups. 제품의 API·출처 분석·점수 로직은 변경하지 않았다.
+- 수정 전 실제 MV3 확장에서 summary.js의 웹 접근 거부와 view.js 동적 import 실패를 재현했다. 또한 Hover 이탈 후 새 문장 선택 팝업이 180ms 닫기 타이머 때문에 사라지는 것을 재현했다.
+- 수정: manifest에 간접 모듈 summary.js 등록, hide()에서 기존 닫기 타이머 해제. 기존 도메인 지원 범위와 권한은 유지한다.
+
+| 검사 | 결과 | 범위 |
+|---|---|---|
+| npm test | 31개 통과 | 기존 회귀·간접 모듈 선언·중복 선택 권한 거부 및 네이버/연합뉴스TV 기사 URL 허용·오인/로컬 주소 거부 |
+| Python pytest | 82개 통과 | 모델 전환·공식 자료·검색 도메인을 포함한 서버 회귀. 사용 중단 예정 경고 1개 |
+| typecheck / build | 통과 | TypeScript 계약·JavaScript 구문·dist/newscheck 생성 |
+| test:browser | 통과 | 기존 320/440/880px 패널·팝업·이벤트 검사 |
+| test:integration / HTTP smoke | 통과 | 실제 worker 모듈·로컬 FastAPI Mock·캐시·기존/신규 선택·서버 중단 오류. Chrome API와 운영 사이트는 어댑터 |
+| test:extension | 두 도메인 통과 | Chrome for Testing 158의 임시 프로필에 실제 MV3 로드. 네이버·연합뉴스TV 각각 콘텐츠 스크립트·모듈 접근 권한·worker 메시지·warm Hover·선택 버튼/결과·이전 Hover 타이머 회귀 |
+| diff --check / check-commit | 통과 | 공백 오류·제외 대상·고확률 비밀 패턴 검사 |
+
+자동 단위·회귀는 JavaScript 31 + Python 82 = **113개**이며 브라우저·HTTP smoke는 별도다. test:extension은 네이버·연합뉴스TV 주소의 가상 페이지와 로컬 fixture HTTP 응답을 사용한다. 사용자 제공 연합뉴스TV HTML은 HTTP 200으로 확보해 기사 판정·2,702자 본문 추출을 별도 확인했다. 사용자 Chrome 프로필·개인 .env는 사용하지 않았고 실제 Gemini/Tavily/DART 요청은 하지 않았다. cold Hover·FastAPI 전체 연결은 기존 어댑터 통합 검사와 구분한다. 운영 사이트의 동적 링크·실제 API 분석 품질은 여전히 별도 확인이 필요하다.
+
+수정 후 .tools/extension-hover.png, .tools/extension-selection.png를 확인했다. dist 빌드 후 사용자가 확장을 재로드하고 기존 뉴스 탭도 새로고침해야 한다. 로컬 수정만 했으며 커밋·Push·PR·Merge는 하지 않았다.
+
+## 아래는 2026-11-12 이전 검증 기록
 기준일: 2026-11-12 (Asia/Seoul). 확장 0.2.0, schema_version=source-tracing-v1, data_version=source-tracing-v1.3.
 현재 기능 브랜치의 로컬 검증 기록이다. 이전 main 기준 JavaScript 9개·Python 19개와 이번 결과를 구분한다.
 

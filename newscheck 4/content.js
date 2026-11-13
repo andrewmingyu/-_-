@@ -1,5 +1,5 @@
 (async () => {
-  const [{extractArticle}, {articleRequest,previewFromAnalysis}, view] = await Promise.all([
+  const [{extractArticle}, {articleRequest,previewFromAnalysis,isSupportedArticleUrl}, view] = await Promise.all([
     import(chrome.runtime.getURL('lib/extract.js')),
     import(chrome.runtime.getURL('shared/article.js')),
     import(chrome.runtime.getURL('shared/view.js'))
@@ -11,10 +11,15 @@
   document.documentElement.append(root);
   const body = shadow.querySelector('.body');
   let timer, hideTimer, sequence = 0, target = null;
-  const hide = () => { sequence++; root.style.display = 'none'; target = null; clearTimeout(timer); };
+  let popupMode = null, selectedText = '', selectionOpenedThisGesture = false;
+  const hide = () => {
+    sequence++; root.style.display = 'none'; target = null;
+    popupMode = null; selectedText = ''; selectionOpenedThisGesture = false;
+    clearTimeout(timer); clearTimeout(hideTimer);
+  };
   shadow.querySelector('.close').onclick = hide;
   root.addEventListener('mouseenter', () => clearTimeout(hideTimer));
-  root.addEventListener('mouseleave', () => { hideTimer = setTimeout(hide,200); });
+  root.addEventListener('mouseleave', () => { if (popupMode === 'hover') hideTimer = setTimeout(hide,200); });
   function show(x,y,html) {
     body.innerHTML = html;
     root.style.display = 'block';
@@ -27,12 +32,13 @@
     return result.data;
   }
   document.addEventListener('mouseover', e => {
+    if (popupMode === 'selection') return;
     const anchor = e.target.closest?.('a[href]');
     if (!anchor || root.contains(anchor)) return;
     let url; try { url = new URL(anchor.href); } catch { return; }
-    if (!['news.naver.com','n.news.naver.com'].includes(url.hostname) || !/\/(?:mnews\/)?article\//.test(url.pathname)) return;
+    if (!isSupportedArticleUrl(url.href)) return;
     if (target === anchor) { clearTimeout(hideTimer); return; }
-    hide(); target = anchor;
+    hide(); popupMode = 'hover'; target = anchor;
     const run = ++sequence, x=e.clientX,y=e.clientY;
     timer=setTimeout(async () => {
       show(x,y,'<p>기사 본문과 출처를 수집하는 중입니다.</p>');
@@ -52,7 +58,7 @@
     },500);
   });
   document.addEventListener('mouseout', e => {
-    if (target && target.contains(e.target) && !target.contains(e.relatedTarget) && !root.contains(e.relatedTarget)) {
+    if (popupMode === 'hover' && target && target.contains(e.target) && !target.contains(e.relatedTarget) && !root.contains(e.relatedTarget)) {
       clearTimeout(timer); hideTimer = setTimeout(hide,180);
     }
   });
@@ -61,12 +67,14 @@
     const selection = getSelection();
     const text = selection?.toString().replace(/\s+/g,' ').trim();
     if(!text || text.length < 2 || text.length > 3000) return;
+    if (popupMode === 'selection' && text === selectedText) return;
     const article = extractArticle();
     if(!article.isArticle) return;
     const payload = articleRequest(article);
     const index = payload.page_text.indexOf(text);
     if(index < 0) return;
-    hide(); const run = ++sequence, x=e.clientX,y=e.clientY;
+    hide(); popupMode = 'selection'; selectedText = text; selectionOpenedThisGesture = true;
+    const run = ++sequence, x=e.clientX,y=e.clientY;
     show(x,y,'<button id="trace-selection">문장 유형·출처 확인</button><p class="trace-note">선택 문장과 기사 본문을 설정된 분석 서버로 전송합니다.</p>');
     shadow.querySelector('#trace-selection').onclick = async () => {
       show(x,y,'<p>선택 문장의 출처를 분석하는 중입니다.</p>');
@@ -77,5 +85,12 @@
       } catch(error) { if(run === sequence) show(x,y,'<p>' + view.esc(error.message) + '</p>'); }
     };
   });
-  document.addEventListener('keydown',e => { if(e.key === 'Escape') hide(); });
+  // Do not treat the click ending the selecting gesture as an outside dismissal.
+  document.addEventListener('mousedown', () => { selectionOpenedThisGesture = false; }, true);
+  document.addEventListener('click', e => {
+    if (popupMode !== 'selection' || e.composedPath().includes(root)) return;
+    if (selectionOpenedThisGesture) { selectionOpenedThisGesture = false; return; }
+    hide();
+  });
+  document.addEventListener('keydown',e => { selectionOpenedThisGesture = false; if(e.key === 'Escape') hide(); });
 })();

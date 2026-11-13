@@ -14,12 +14,13 @@ AI는 뉴스의 사실·거짓, 주장-근거의 논리 타당성을 대신 판�
 기존 HTML/CSS/JavaScript 구조와 기사 추출·원문 위치 이동·아이콘을 보존했습니다. React 전면 재작성이나 담당자 배정은 하지 않았습니다.
 
 ## 주요 기능
-- 기사 제목 Hover 500ms 후 본문 기반 요약·근거·출처·표현 차이·주의사항 팝업.
+- 네이버 뉴스·연합뉴스TV 기사 링크에 Hover 500ms 후 본문 기반 요약·근거·출처·표현 차이·주의사항 팝업.
 - 우측 6개 카드: 배경 및 맥락 / 기사 기본 정보 / 기사의 주장 / 내용의 근거 / 주의할 것 / 비슷한 주제의 기사.
 - 각 카드의 독립적인 자세히 보기·접기 및 키보드 조작.
 - 요약 1~2문장을 글머리표로 표시하고 작은 기사 정보를 오른쪽에 배치합니다. 배경은 네모·화살표, 관련 기사는 최대 5건의 한 줄 목록으로 보여줍니다.
 - 관련 보도의 공통 항목·표현/강조 차이를 현재 기사와 비교 보도의 실제 구절로 나란히 표시. 확보한 본문 발췌·검색 요약·제목만 비교한 경우를 구분하며 사실 판정은 하지 않습니다.
 - 문장 선택 후 사용자 클릭으로 문장 유형·관련 출처·원출처 상태·주의사항 표시.
+- 드래그 팝업은 분석 중·결과 표시 중 마우스를 옮겨도 유지하고, 팝업 밖 클릭·닫기·Escape로 닫습니다. Hover 팝업은 기존처럼 마우스 이탈 시 닫힙니다.
 - 원출처 상태: original_found / secondary_only / source_not_found / unknown.
 - 주의사항 상태: caution / none_identified / unknown, 객관적인 이유 및 미확인 정보 함께 저장.
 - 실제 검색 URL·ID·정확한 원문 인용 검사, 검색 실패와 빈 결과 구분.
@@ -220,6 +221,7 @@ Gemini와 Tavily 각각 [PASS]가 나와야 합니다. 이는 기본 인증·모
 - 연예·인터뷰처럼 출처를 내세우지 않는 기사는 점수가 낮게 나올 수 있습니다. 점수는 기사의 사실 여부와 무관합니다. 화면에 "참고용 추정 점수이며 사실 판정이 아니다"라는 안내를 항상 함께 표시합니다.
 
 ## 테스트
+Hover·드래그 스크립트는 네이버 뉴스(news.naver.com, n.news.naver.com)와 연합뉴스TV(yonhapnewstv.co.kr, www.yonhapnewstv.co.kr)에 주입합니다. Hover 대상은 네이버 /article/·/mnews/article/ 및 연합뉴스TV /news/MYH… 기사 링크입니다. 링크가 아닌 현재 기사 제목은 Hover 대상이 아닙니다. 패널·자동 배지의 전체 HTTPS 권한과 팝업 지원 도메인은 서로 다릅니다.
 ```powershell
 npm.cmd test
 npm.cmd run typecheck
@@ -235,6 +237,19 @@ git diff --check
 다르면 `$env:CHROME_PATH='설치된 Chrome 실행 파일 경로'`를 설정합니다.
 HTTP smoke는 임시 로컬 포트의 mock 서버를 띄우며 실제 AI API를 호출하지 않습니다.
 통합 검사는 실제 extractArticle·background.js·API 클라이언트·Uvicorn·Mock 파이프라인·카드/팝업을 연결합니다. Chrome API 경계와 네이버 페이지는 테스트 어댑터/합성 DOM이며 설치된 확장이나 실제 네이버 검사를 대신하지 않습니다. Python 경로를 별도로 지정하려면 PYTHON_PATH를 사용합니다.
+`npm test`는 콘텐츠 스크립트가 동적으로 읽는 모듈의 간접 의존성까지 `web_accessible_resources`에 선언됐는지 검사합니다. 실제 MV3 패키지 로딩과 Hover·선택 팝업 회귀는 다음 별도 검사로 확인할 수 있습니다. 이 검사는 임시 프로필과 가상 네이버 기사·로컬 HTTP 응답을 사용하며 실제 뉴스·AI API를 호출하지 않습니다.
+
+```powershell
+$env:PLAYWRIGHT_BROWSERS_PATH = Join-Path (Get-Location) '.tools\pw-browsers'
+node node_modules/playwright-core/cli.js install chromium --no-shell
+npm.cmd run build
+npm.cmd run test:extension
+$env:TEST_ARTICLE_URL = 'https://www.yonhapnewstv.co.kr/news/MYH20261113165748OZp'
+npm.cmd run test:extension
+Remove-Item Env:TEST_ARTICLE_URL
+```
+
+테스트용 Chromium은 위 설치를 처음 실행할 때 다운로드합니다. 사용자 Chrome 프로필은 사용하지 않습니다. 기존 `test:browser`·`test:integration`과 달리 실제 확장 권한·리소스 로딩을 적용하지만, 운영 네이버나 실제 API 품질 검증은 별도로 필요합니다.
 자동 검사가 실제 모델 품질·Chrome 설치 상태 검증을 대신하지 않습니다. 상세 증거와 남은 검사는 [VALIDATION](docs/VALIDATION.md)에 있습니다.
 
 ## 현재 제약과 다음 작업

@@ -1,3 +1,17 @@
+export function isSupportedArticleUrl(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return false;
+    if (['news.naver.com', 'n.news.naver.com'].includes(url.hostname)) {
+      return /\/(?:mnews\/)?article\//.test(url.pathname);
+    }
+    if (['yonhapnewstv.co.kr', 'www.yonhapnewstv.co.kr'].includes(url.hostname)) {
+      return /^\/news\/MYH[0-9A-Za-z_-]+\/?$/.test(url.pathname);
+    }
+    return false;
+  } catch { return false; }
+}
+
 export function normalizeArticleUrl(value) {
   const url = new URL(value);
   if (!['http:','https:'].includes(url.protocol) || url.username || url.password) throw new Error('올바른 기사 URL이 필요합니다.');

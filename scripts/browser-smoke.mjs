@@ -91,7 +91,9 @@ try {
       if(m.type==='NEWSCHECK_GET_CACHED_ARTICLE')return {ok:true,data:{payload:null}};
       if(m.type==='NEWSCHECK_FETCH_ARTICLE')return {ok:true,data:{html:articleHtml,url:m.url}};
       if(m.type==='NEWSCHECK_PREVIEW')return {ok:true,data:{article_id:fixture.article_id,is_demo:true,summary:fixture.one_line_summary,major_evidence:fixture.evidence_mentions,sources:fixture.sources,headline_difference:fixture.headline_difference,one_line_caution:fixture.caution.reasons[0],search_status:fixture.search_status}};
-      if(m.type==='NEWSCHECK_SELECTION')return {ok:true,data:{article_id:fixture.article_id,selected_text:m.payload.selected_text,is_demo:true,claims:fixture.claims,sources:fixture.sources,caution:fixture.caution}};
+      if(m.type==='NEWSCHECK_SELECTION')return new Promise(resolve=>{
+        window._releaseSelection=()=>resolve({ok:true,data:{article_id:fixture.article_id,selected_text:m.payload.selected_text,is_demo:true,claims:fixture.claims,sources:fixture.sources,caution:fixture.caution}});
+      });
       throw new Error('Unexpected message');
     }};
   },{origin,fixture,articleHtml});
@@ -113,7 +115,22 @@ try {
     p.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,clientX:100,clientY:180}));
   });
   await contentPage.locator('#__newscheck_popup #trace-selection').click();
+  await contentPage.waitForFunction(()=>typeof window._releaseSelection==='function');
+  await contentPage.mouse.move(900,800);
+  await contentPage.waitForTimeout(350);
+  assert.equal(await contentPage.locator('#__newscheck_popup .box').isVisible(),true,'Moving away must keep selected-sentence analysis visible');
+  await contentPage.locator('#hover-link').hover();
+  await contentPage.waitForTimeout(650);
+  assert.match(await contentPage.locator('#__newscheck_popup .body').innerText(),/선택 문장의 출처를 분석/);
+  assert.equal(await contentPage.evaluate(()=>window._messages.filter(m=>m.type==='NEWSCHECK_PREVIEW').length),1,'Hover must not replace pinned selection analysis');
+  await contentPage.evaluate(()=>window._releaseSelection());
   await contentPage.waitForFunction(()=>document.querySelector('#__newscheck_popup').shadowRoot.querySelector('.body').textContent.includes('원본 자료 확인'));
+  await contentPage.locator('#__newscheck_popup .body').click({position:{x:10,y:10}});
+  await contentPage.mouse.move(900,800);
+  await contentPage.waitForTimeout(350);
+  assert.equal(await contentPage.locator('#__newscheck_popup .box').isVisible(),true,'Selection results must remain visible after pointer leave');
+  await contentPage.mouse.click(900,800);
+  assert.equal(await contentPage.locator('#__newscheck_popup .box').isVisible(),false,'Outside click must close selection results');
   const messages=await contentPage.evaluate(()=>window._messages);
   const request=messages.find(m=>m.type==='NEWSCHECK_SELECTION');
   assert.equal(request.payload.selected_text,selectedText);
