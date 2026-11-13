@@ -10,7 +10,8 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from .models import (Article, ArticleAnalysis, Claim, Decision, Extraction, Source, RelatedArticle,
                      SourceFacts, SourceReviews, AnalyzeRequest, SelectionAnalysis, TextSpan,
-                     CautionDetail, ArticleContext, EventInfo, PipelineError, SectionState, ReportComparisons)
+                     CautionDetail, ArticleContext, EventInfo, PipelineError, SectionState, ReportComparisons,
+                     HeadlineExplanation, Preview)
 from .prompts import EXTRACT, TRACE, COMPARE_REPORTS
 from .report_comparison import comparison_material, apply_comparisons
 from .errors import ProviderError
@@ -155,6 +156,7 @@ class Analyzer:
         self.llm, self.search, self.mode, self.ttl = llm, search, mode, ttl
         self.official = official  # 공식 공시 조회(DART 등). 없으면 건너뛴다.
         self.cache, self.inflight = {}, {}
+        self.extractions, self.extracting = {}, {}
 
     def cache_key(self, request, focus=None):
         # Metadata/title are included so corrections cannot reuse an old presentation.
@@ -163,7 +165,7 @@ class Analyzer:
             metadata['url'] = normalize_url(request.url)
         return body_hash(json.dumps([normalize_url(request.url), body_hash(request.page_text),
             request.title, metadata, clean_context(request.article_context,request.page_text).model_dump(mode='json'),
-            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.5', focus], ensure_ascii=False))
+            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.7', focus], ensure_ascii=False))
 
     def lookup(self, article_id, url=None):
         url = normalize_url(url) if url is not None else None
@@ -199,16 +201,59 @@ class Analyzer:
         finally:
             if task.done():
                 self.inflight.pop(key, None)
+                self.extractions.pop(key, None)
 
-    async def _run(self, request, key, focus=None):
+    async def _extract(self, request, key, focus=None):
+        cached = self.extractions.get(key)
+        if not request.refresh and cached and cached[0] > time.monotonic():
+            return cached[1].model_copy(deep=True)
+        if key not in self.extracting:
+            self.extracting[key] = asyncio.create_task(self._extract_once(request,focus))
+        task = self.extracting[key]
+        try:
+            extracted = await asyncio.shield(task)
+            if len(self.extractions) >= 128 and key not in self.extractions:
+                self.extractions.pop(next(iter(self.extractions)))
+            self.extractions[key] = (time.monotonic()+self.ttl,extracted)
+            return extracted.model_copy(deep=True)
+        finally:
+            if task.done():
+                self.extracting.pop(key,None)
+
+    async def _extract_once(self,request,focus=None):
         instruction = EXTRACT
         if focus:
             instruction += '\nselected_text에 해당하는 주장만 추출하라. 발언자와 기사 근거를 이해할 때 body의 주변 문맥을 참고하라.'
         extracted = await self.llm.generate(instruction, {'title': request.title, 'body': request.page_text, 'selected_text': focus,
             'article_context':request.article_context.model_dump(mode='json')}, Extraction)
-        extracted = self.clean_extraction(extracted, request.page_text)
+        return self.clean_extraction(extracted,request.page_text)
+
+    async def preview(self,request):
+        if not request.page_text.strip():
+            raise ArticleInputError('기사 본문을 확보하지 못했습니다. 제목만으로 요약하지 않습니다.')
+        request = request.model_copy(update={'article_context':clean_context(request.article_context,request.page_text)})
+        try:
+            key = self.cache_key(request)
+        except ValueError as exc:
+            raise ArticleInputError('사용자 정보가 없는 HTTP(S) 기사 URL이 필요합니다.') from exc
+        cached = self.cache.get(key)
+        if not request.refresh and cached and cached[0] > time.monotonic():
+            a = cached[1]
+            return Preview(article_id=a.article_id,is_demo=a.is_demo,summary=a.one_line_summary,
+                major_evidence=a.evidence_mentions[:2],sources=a.sources,headline_difference=a.headline_difference,
+                one_line_caution=a.caution.reasons[0],search_status=a.search_status,claims=a.claims[:2],
+                body_hash=a.body_hash,data_version=a.data_version,pipeline_errors=a.pipeline_errors)
+        extracted = await self._extract(request,key)
+        return Preview(article_id=key[:24],is_demo=self.mode=='mock',summary=extracted.summary,
+            major_evidence=[],sources=[],headline_difference=extracted.headline_difference,
+            one_line_caution='기사 본문만 요약한 미리보기입니다. 출처 확인은 상세 분석에서 진행합니다.',
+            search_status='not_run',body_hash=body_hash(request.page_text))
+
+    async def _run(self, request, key, focus=None):
+        extracted = await self._extract(request,key,focus)
         if focus:
             extracted.claims = [c for c in extracted.claims if focus in c.original_text or c.original_text in focus]
+            extracted.headline_explanation = HeadlineExplanation()
             ids = {c.id for c in extracted.claims}
             scoped_ids = {c.id:'selection_'+key[:10]+'_'+c.id for c in extracted.claims}
             for claim in extracted.claims:
@@ -324,6 +369,8 @@ class Analyzer:
             else:
                 claim.source_status = 'source_not_found' if search_status == 'completed' else 'unknown'
             claim.caution = claim_decision(claim, own_mentions, own_sources, search_status)
+        for reason in extracted.headline_explanation.reasons:
+            reason.source_ids = [s.id for s in sources if set(s.mention_ids) & set(reason.mention_ids)]
         decision = combine_decisions([c.caution for c in claims])
         if request.article_context.body_truncated:
             decision = combine_decisions([decision,Decision(status='caution',reasons=['본문 길이 제한으로 추출된 앞부분만 분석했습니다. 전체 기사를 추가 확인해 주세요.'])])
@@ -386,6 +433,7 @@ class Analyzer:
         return ArticleAnalysis(article_id=key[:24], body_hash=body_hash(request.page_text),
             analysis_status='partial' if request.article_context.body_truncated or search_errors or decision.status == 'unknown' or any(s.unknown_fields for s in sources) else 'complete',
             is_demo=self.mode=='mock', article=metadata, one_line_summary=extracted.summary, claims=claims, evidence_mentions=mentions,
+            headline_explanation=extracted.headline_explanation,
             context_timeline=extracted.context_timeline, sources=sources, caution=decision, related_articles=related,
             headline_difference=extracted.headline_difference, search_status=search_status, search_errors=search_errors,
             final_comment=('규칙·fixture 기반 시연용 분석입니다. ' if self.mode=='mock' else '')+'출처 확인이나 주의사항 부재는 주장 진실성의 입증이 아닙니다.', analyzed_at=now_iso(),
@@ -428,6 +476,28 @@ class Analyzer:
             event.description = event.article_quote
             event.time = event.time if event.time and event.time in event.article_quote else None
             event.location = event.location if event.location and event.location in event.article_quote else None
+        event = extracted.event
+        matching = [i for i,t in enumerate(extracted.context_timeline) if event.article_quote and
+                    (event.article_quote in t.article_quote or t.article_quote in event.article_quote)]
+        marked = [i for i,t in enumerate(extracted.context_timeline) if t.is_main_event]
+        main = matching[0] if matching else marked[0] if marked else None
+        for i,t in enumerate(extracted.context_timeline):
+            t.is_main_event = i == main
+        mids = {m.id for m in mentions}
+        reasons = []
+        for reason in extracted.headline_explanation.reasons:
+            if not reason.article_quote or reason.article_quote not in text:
+                continue
+            reason.claim_ids = list(dict.fromkeys([i for i in reason.claim_ids if i in ids] +
+                [c.id for c in claims if c.original_text in reason.article_quote or reason.article_quote in c.original_text]))
+            reason.mention_ids = list(dict.fromkeys([i for i in reason.mention_ids if i in mids] +
+                [m.id for m in mentions if set(m.claim_ids) & set(reason.claim_ids) or
+                 m.article_quote in reason.article_quote or reason.article_quote in m.article_quote]))
+            reason.source_ids = []
+            reason.article_span = text_span(text,reason.article_quote)
+            reasons.append(reason)
+        extracted.headline_explanation = (HeadlineExplanation(meaning=extracted.headline_explanation.meaning,reasons=reasons)
+            if reasons and extracted.headline_explanation.meaning else HeadlineExplanation())
         return extracted
 
     @staticmethod

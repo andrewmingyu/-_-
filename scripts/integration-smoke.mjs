@@ -72,7 +72,7 @@ try{
   const errors=[];
   const article=await context.newPage();article.on('pageerror',e=>errors.push(e.message));
   await article.exposeFunction('__sendNewscheck',send);
-  await article.addInitScript(({moduleBase})=>{window.chrome=window.chrome||{};window.chrome.runtime={getURL:name=>moduleBase+name,sendMessage:m=>window.__sendNewscheck(m)};},{moduleBase});
+  await article.addInitScript(({moduleBase})=>{window.chrome=window.chrome||{};window.chrome.runtime={id:'integration-extension',getURL:name=>moduleBase+name,sendMessage:m=>window.__sendNewscheck(m)};},{moduleBase});
   await article.goto(articleUrl);
   const panel=await context.newPage();panel.on('pageerror',e=>errors.push(e.message));
   await panel.setViewportSize({width:440,height:900});
@@ -96,12 +96,20 @@ try{
   assert.ok(full.caution.details.some(d=>d.source_ids.length));
   assert.equal(full.claims[0].original_text,results[0].message.payload.page_text.slice(full.claims[0].article_span.start,full.claims[0].article_span.end));
   assert.ok(full.context_timeline[0].source_ids.length);
+  assert.ok(full.headline_explanation.meaning);
+  assert.ok(full.headline_explanation.reasons.length);
+  assert.ok(full.headline_explanation.reasons[0].source_ids.length);
+  assert.equal(full.context_timeline[0].is_main_event,true);
   assert.equal(full.related_articles[0].comparison_status,'compared');
   assert.equal(full.related_articles[0].comparison_basis,'search_snippet');
   assert.ok(full.related_articles[0].comparison_points.some(point=>point.kind==='common'));
   assert.ok(full.related_articles[0].comparison_points.some(point=>point.kind==='difference'));
   assert.equal(counts.analyze,1);
   for(const id of ['context','metadata','claims','evidence','cautions','related'])await panel.locator('[data-toggle="'+id+'"]').click();
+  await panel.locator('[data-headline-toggle]').click();
+  await panel.locator('[data-headline-jump="0"]').click();
+  assert.equal(await panel.locator('#details-evidence').isVisible(),true);
+  assert.equal(await panel.locator('#details-claims').isVisible(),true);
   await panel.locator('#details-related .report-detail > summary').first().click();
   assert.equal(await panel.locator('#details-related .report-pair').count(),2);
   assert.ok((await panel.locator('#details-related').innerText()).includes('검색 요약 범위 비교'));
@@ -122,7 +130,7 @@ try{
   await article.keyboard.press('Escape');
   articleInputs.delete(articleUrl);
   await article.mouse.move(950,850);await article.locator('#hover-link').hover();
-  await article.waitForFunction(()=>{const root=document.querySelector('#__newscheck_popup');return root.style.display==='block'&&root.shadowRoot.querySelector('.body').textContent.includes('주요 주장');});
+  await article.waitForFunction(()=>{const root=document.querySelector('#__newscheck_popup');return root.style.display==='block'&&root.shadowRoot.querySelector('.body').textContent.includes('핵심 요약');});
   assert.equal(counts.articleFetch,1);assert.equal(counts.preview,1);
   const preview=results.find(r=>r.message.type==='NEWSCHECK_PREVIEW').result.data;
   assert.equal(preview.article_id,full.article_id);assert.equal(preview.body_hash,full.body_hash);

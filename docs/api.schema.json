@@ -541,6 +541,12 @@
       "EventInfo": {
         "additionalProperties": false,
         "properties": {
+          "label": {
+            "default": "",
+            "maxLength": 24,
+            "title": "Label",
+            "type": "string"
+          },
           "description": {
             "anyOf": [
               {
@@ -591,6 +597,82 @@
           }
         },
         "title": "EventInfo",
+        "type": "object"
+      },
+      "HeadlineExplanation": {
+        "additionalProperties": false,
+        "properties": {
+          "meaning": {
+            "default": "",
+            "maxLength": 600,
+            "title": "Meaning",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/$defs/HeadlineReason"
+            },
+            "maxItems": 4,
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "title": "HeadlineExplanation",
+        "type": "object"
+      },
+      "HeadlineReason": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "article_quote": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Article Quote",
+            "type": "string"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Claim Ids",
+            "type": "array"
+          },
+          "mention_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Mention Ids",
+            "type": "array"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Ids",
+            "type": "array"
+          },
+          "article_span": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TextSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "text",
+          "article_quote"
+        ],
+        "title": "HeadlineReason",
         "type": "object"
       },
       "Mention": {
@@ -1207,6 +1289,17 @@
             "title": "Date",
             "type": "string"
           },
+          "label": {
+            "default": "",
+            "maxLength": 24,
+            "title": "Label",
+            "type": "string"
+          },
+          "is_main_event": {
+            "default": false,
+            "title": "Is Main Event",
+            "type": "boolean"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -1252,7 +1345,7 @@
         "type": "string"
       },
       "data_version": {
-        "default": "source-tracing-v1.3",
+        "default": "source-tracing-v1.7",
         "title": "Data Version",
         "type": "string"
       },
@@ -1283,6 +1376,9 @@
       "one_line_summary": {
         "title": "One Line Summary",
         "type": "string"
+      },
+      "headline_explanation": {
+        "$ref": "#/$defs/HeadlineExplanation"
       },
       "context_timeline": {
         "items": {
@@ -2903,7 +2999,7 @@
         "type": "string"
       },
       "data_version": {
-        "default": "source-tracing-v1.3",
+        "default": "source-tracing-v1.7",
         "title": "Data Version",
         "type": "string"
       },

@@ -2,7 +2,7 @@
 import json
 import re
 from pathlib import Path
-from .models import Claim, EventInfo, Extraction, SourceReviews, TimelineItem, ReportComparisons
+from .models import Claim, EventInfo, Extraction, SourceReviews, TimelineItem, ReportComparisons, HeadlineExplanation
 
 FIXTURE = json.loads((Path(__file__).resolve().parents[2] / 'fixtures/mock_source_documents.json').read_text(encoding='utf-8'))
 
@@ -43,10 +43,15 @@ class MockLLM:
             for sentence in sentences:
                 match = re.search(r'(20\d{2}년\s*\d{1,2}월\s*\d{1,2}일)\s+([가-힣]{2,12})에서', sentence)
                 if match:
-                    event = EventInfo(description=sentence, article_quote=sentence, time=match.group(1), location=match.group(2))
-                    timeline = [TimelineItem(date=match.group(1),description=sentence,article_quote=sentence)]
+                    event = EventInfo(label='주요 사건',description=sentence, article_quote=sentence, time=match.group(1), location=match.group(2))
+                    timeline = [TimelineItem(date=match.group(1),label='주요 사건',is_main_event=True,description=sentence,article_quote=sentence)]
                     break
+            explanation = HeadlineExplanation() if focus else HeadlineExplanation(
+                meaning=' '.join(selected[:2])[:600],
+                reasons=[{'text':c.original_text if len(c.original_text)<=240 else '기사에서 제목과 관련된 내용을 설명합니다.','article_quote':c.original_text[:2000],'claim_ids':[c.id],
+                          'mention_ids':[m['id'] for m in mentions if c.id in m['claim_ids']]} for c in claims[:3]])
             return Extraction(summary='\n'.join(selected[:2]),
+                headline_explanation=explanation,
                 claims=claims,evidence_mentions=mentions,context_timeline=timeline,event=event,
                 headline_difference='시연 모드에서는 제목과 본문 표현의 차이를 자동 평가하지 않습니다.')
         reviews = []

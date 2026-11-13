@@ -1,5 +1,5 @@
 # 시스템 구조와 데이터 흐름
-기준: 2026-11-12, source-tracing-v1 / data_version=source-tracing-v1.3, Chrome 확장 manifest 0.2.0. 현재 로컬 소스 기준이며 원격 main의 상태나 향후 설계와 구분한다.
+기준: 2026-11-12, source-tracing-v1 / data_version=source-tracing-v1.7, Chrome 확장 manifest 0.2.0. 현재 로컬 소스 기준이며 원격 main의 상태나 향후 설계와 구분한다.
 
 ## 처음 코드와 수정본의 구성 차이
 최초 업로드 de18984에는 newscheck 4/와 README만 있었다. 별도 Python 서버나 DB가 없고, 확장 프로그램 안에서 화면 처리와 외부 API 요청을 수행했다. background.js라는 이름은 Chrome 서비스 워커를 뜻하며 Python 백엔드 서버를 뜻하지 않는다.
@@ -125,7 +125,7 @@ LLM_MODEL, 스키마 버전, 선택 focus로 구성한다. 같은 키의 진행 
 클라이언트가 보내는 surrounding_text는 계약에 존재하지만 서버의 권위 있는 문맥은 page_text 전체이며 별도 외부 텍스트를 합치지 않는다.
 모드 mock도 동일 Analyzer에서 입력 기사·본문 해시를 사용하되 공급자만 MockLLM/MockSearch로 바꾼다. 정적 UI ?demo의 고정 fixture는 별도이다.
 워커 ArticleInputCache는 정규화 URL별 입력·analysis ID를 30초/최대 64건 기억하고 GET 기존 결과 조회 및 본문 SHA-256 검사를 통과한 경우에만 Hover에 재사용한다. 차가운 Hover의 HTML도 30초/64건·동시 fetch 중복 방지를 적용한다.
-서버 cache key는 ArticleContext·정규화 메타 URL·data_version=source-tracing-v1.3도 포함한다.
+서버 cache key는 ArticleContext·정규화 메타 URL·data_version=source-tracing-v1.7도 포함한다.
 
 ## 실패와 제한
 - 요청 스키마/본문/선택/분석 ID 오류: 422.
@@ -140,3 +140,10 @@ LLM_MODEL, 스키마 버전, 선택 focus로 구성한다. 같은 키의 진행 
 검색 결과의 원문 누락은 고정 Tavily extract endpoint로만 보강하며 URL 후보 허용 목록을 적용한다. 기사 내부 링크는 원본 관계가 아닌 기사 인용 연결의 근거로만 사용한다.
 섹션별 상태와 pipeline_errors, 이유별 주의사항 참조, 사건/타임라인 출처가 같은 ArticleAnalysis에 포함된다.
 scripts/integration-smoke.mjs는 실제 worker와 HTTP 서버를 연결하되 Chrome API·네이버 페이지를 어댑터로 대체한다. 실제 설치 검사는 여전히 별도다.
+
+## 제목에서 근거까지의 연결
+Extraction.headline_explanation → clean_extraction의 기사 인용·ID 검사 → source/mention 연결 → ArticleAnalysis → shared/view.js의 제목 카드가 같은 결과를 공유한다. 더보기의 이유 버튼은 이미 받은 데이터로 근거 카드를 펼쳐 스크롤·포커스를 이동한다. 이동 시 외부 API를 다시 부르지 않는다. 자료 연결이 없으면 trace-overview로 이동한다.
+타임라인의 label은 표시용 짧은 표현이고 description/article_quote는 원문이다. is_main_event는 주요 사건 표시용이며 사실 여부나 공신력 점수가 아니다. 기존 6개 카드·팝업·분석 API는 유지한다.
+
+## Hover와 상세 분석의 단계 공유
+Analyzer._extract는 본문 이해 결과와 진행 중인 추출을 키별로 공유한다. Preview는 이 단계에서 반환하고 Tavily·DART·출처 검토를 호출하지 않는다. 전체 analyze는 같은 추출의 깊은 복사로 후속 검증을 진행한다. 완성된 분석은 기존 cache에만 저장하며 추출만 있는 ID의 GET 전체 결과 조회는 404다. 추출 임시 캐시는 TTL/128건 제한, refresh 우회, 전체 분석 종료 시 정리를 적용해 실패한 전체 분석의 재시도를 막지 않는다.

@@ -2,9 +2,131 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
-import { renderAnalysis, renderAnalysisState, renderPreview, renderSelection, safeLink } from '../newscheck 4/shared/view.js';
+import { renderAnalysis, renderAnalysisState, renderPreview, renderSelection, safeLink, reasonPhrase } from '../newscheck 4/shared/view.js';
 import { validateAnalysis, validateSelection, validatePreview, requestAnalysis, backendUrl } from '../newscheck 4/shared/api.js';
 const fixture=JSON.parse(fs.readFileSync(new URL('../newscheck 4/data/demo.json',import.meta.url),'utf8'));
+
+test('caution details merge repeated explanations while preserving distinct facts and all references',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),a=structuredClone(fixture);
+  a.sources.push({...structuredClone(a.sources[0]),id:'src_second',title:'별도 발행 자료',url:'https://source.example/second'});
+  const reason='자료 작성자의 이해관계 관련 문구를 확인했습니다: 공급사 지원';
+  a.caution={status:'caution',reasons:[reason,reason+' ', '자료는 기사 작성일보다 800일 이전입니다.','원본 자료 확인은 주장의 진실성을 입증하지 않습니다.'],details:[
+    {reason,source_ids:[a.sources[0].id],claim_ids:[a.claims[0].id]},
+    {reason:reason+' .',source_ids:[a.sources[1].id],claim_ids:[a.claims[1].id]}
+  ]};
+  renderAnalysis(root,a,new Set(['cautions']));
+  const details=root.querySelector('#details-cautions');
+  assert.equal([...details.querySelectorAll('.caution-item')].filter(el=>el.textContent.includes('공급사 지원')).length,1);
+  assert.match(details.textContent,/800일/);
+  for(const source of a.sources)assert.ok(details.textContent.includes(source.title));
+  assert.match(details.textContent,/주장 1 · 주장 2/);
+  assert.ok(![...details.querySelectorAll('.caution-item')].some(el=>el.textContent.includes('원본 자료 확인은')),'Generic truth disclaimer belongs in the footer, not in the issue list');
+  assert.doesNotMatch(details.textContent,/추가로 확인하면 좋은 자료|원문 전체, 조사 방법, 최신 발행본|확인된 정보 없음/);
+});
+
+test('caution details consolidate missing fields and search failures without repeated empty categories',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),a=structuredClone(fixture);
+  a.sources.forEach(s=>s.unknown_fields=['작성자','전문 분야','작성자']);
+  const error='검색된 자료의 원문 확보 요청이 실패했습니다.';
+  a.search_errors=[error,error];
+  a.caution={status:'unknown',reasons:[
+    '출처 속성을 확인하지 못했습니다: 작성자, 전문 분야',
+    '출처 속성을 확인하지 못했습니다: 작성자',
+    error,'원출처 검색 요청이 실패하여 분석이 불완전합니다.'
+  ],details:[]};
+  renderAnalysis(root,a,new Set(['cautions']));
+  const details=root.querySelector('#details-cautions');
+  assert.deepEqual([...details.querySelectorAll('h3')].map(el=>el.textContent),['확인하지 못한 출처 정보','분석 중 발생한 문제']);
+  assert.equal(details.textContent.split('작성자').length-1,1);
+  assert.equal(details.textContent.split(error).length-1,1);
+  assert.equal(details.querySelectorAll('a').length,0,'demo source links must stay disabled');
+  assert.doesNotMatch(details.textContent,/출처 속성을 확인하지|확인된 정보 없음/);
+  assert.ok(!details.textContent.includes(a.claims[0].original_text));
+});
+
+test('no identified caution shows only its state and disclaimer, and caution HTML remains escaped',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),a=structuredClone(fixture);
+  a.sources=[];a.search_errors=[];
+  a.caution={status:'none_identified',reasons:['확보한 출처 정보에서 별도의 주의사항을 발견하지 못했습니다. 주장 진위의 판정은 아닙니다.']};
+  renderAnalysis(root,a,new Set(['cautions']));
+  assert.equal(root.querySelector('#details-cautions h3'),null);
+  assert.equal(root.querySelectorAll('#details-cautions .trace-note').length,1);
+  a.caution={status:'caution',reasons:['<img src=x onerror=alert(1)>']};
+  renderAnalysis(root,a,new Set(['cautions']));
+  assert.equal(root.querySelector('#details-cautions img'),null);
+  assert.match(root.querySelector('#details-cautions').textContent,/<img/);
+});
+
+test('headline meaning and reasons have separate headings and reasons retain meaning as brief phrases',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
+  renderAnalysis(root,fixture);
+  assert.equal(root.querySelector('#headline-explanation-title').textContent,'제목의 의미');
+  assert.equal(root.querySelector('.headline-reasons-title').textContent,'이유');
+  assert.equal(reasonPhrase('이란 측은 청해부대 임무 확대가 미국의 대이란 침략 가담 행위라고 주장했다.'),'이란 측은 청해부대 임무 확대가 미국의 대이란 침략 가담 행위라고 주장');
+  assert.equal(reasonPhrase('기관은 추가 조치 가능성을 경고했습니다.'),'기관은 추가 조치 가능성을 경고');
+  assert.equal(reasonPhrase('정책 시행은 확정되지 않았다.'),'정책 시행은 확정되지 않음');
+  assert.equal(reasonPhrase('내년부터 시행할 수 있다.'),'내년부터 시행할 수 있음');
+  assert.equal(reasonPhrase('아직 검토 중이다.'),'아직 검토 중');
+});
+
+test('Hover is concise and excludes claims, evidence, sources and source caution lists',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
+  root.innerHTML=renderPreview({is_demo:true,summary:'핵심 내용 한 문장입니다.',claims:fixture.claims,
+    major_evidence:fixture.evidence_mentions,sources:fixture.sources,headline_difference:'제목은 검토 단계를 강조합니다.',
+    one_line_caution:'확인이 필요한 근거',pipeline_errors:[{message:'상세 출처 확인 오류'}]});
+  assert.deepEqual([...root.querySelectorAll('h3')].map(el=>el.textContent),['핵심 요약','제목·본문 표현 차이']);
+  assert.equal(root.querySelectorAll('.source-row').length,0);
+  assert.doesNotMatch(root.textContent,/주요 주장|주요 근거|확인이 필요한 근거|상세 출처 확인 오류/);
+  assert.match(root.textContent,/핵심 내용 한 문장/);
+});
+test('headline meaning is first, reasons are plain bullets and evidence jumps preserve other cards',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),expanded=new Set(['claims']);
+  renderAnalysis(root,fixture,expanded);
+  assert.equal(root.firstElementChild.classList.contains('headline-explanation'),true);
+  assert.equal(root.querySelector('.headline-meaning').textContent,fixture.headline_explanation.meaning);
+  assert.equal(root.querySelectorAll('.headline-reasons > li').length,fixture.headline_explanation.reasons.length);
+  assert.equal(root.querySelectorAll('.headline-reasons a').length,0);
+  const toggle=root.querySelector('[data-headline-toggle]');toggle.click();
+  assert.equal(root.querySelector('#headline-details').hidden,false);
+  root.querySelector('[data-headline-jump="0"]').click();
+  assert.equal(root.querySelector('#details-evidence').hidden,false);
+  assert.equal(root.querySelector('[data-toggle="claims"]').getAttribute('aria-expanded'),'true');
+  assert.equal(document.activeElement.id,'evidence-mention-'+fixture.headline_explanation.reasons[0].mention_ids[0]);
+  assert.equal(root.querySelectorAll('[data-toggle]').length,6);
+});
+
+test('headline reasons without linked sources lead to source overview and missing legacy fields remain usable',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),data=structuredClone(fixture);
+  Object.assign(data.headline_explanation.reasons[0],{mention_ids:[],source_ids:[]});
+  renderAnalysis(root,data,new Set(['headline']));
+  root.querySelector('[data-headline-jump="0"]').click();
+  assert.equal(document.activeElement.id,'trace-overview');
+  delete data.headline_explanation;
+  assert.equal(validateAnalysis(data),data);renderAnalysis(root,data);
+  assert.match(root.querySelector('.headline-explanation').textContent,/제목 설명이 아직 없습니다/);
+});
+
+test('headline text is escaped and invented reason links or multiple main events are rejected',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),data=structuredClone(fixture);
+  data.headline_explanation.meaning='<img src=x onerror=alert(1)>';
+  renderAnalysis(root,data);
+  assert.equal(root.querySelector('.headline-explanation img'),null);
+  assert.ok(root.querySelector('.headline-meaning').textContent.includes('<img'));
+  data.headline_explanation.reasons[0].source_ids=['invented'];
+  assert.throws(()=>validateAnalysis(data),/제목 이유 참조/);
+  const wrong=structuredClone(fixture);wrong.context_timeline.forEach(t=>t.is_main_event=true);
+  assert.throws(()=>validateAnalysis(wrong),/주요 사건/);
+});
+
+test('context boxes use short phrases with a separate date and one emphasized main event',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
+  renderAnalysis(root,fixture);
+  const boxes=[...root.querySelectorAll('#summary-context .context-step')];
+  assert.equal(boxes.filter(b=>b.classList.contains('context-main')).length,1);
+  assert.deepEqual(boxes.map(b=>b.querySelector('p').textContent),fixture.context_timeline.map(t=>t.label));
+  assert.ok(boxes.every(b=>b.querySelector('.context-date')&&!b.querySelector('p').textContent.includes('…')));
+});
+
 test('six independent accessible controls keep all other cards open and survive refresh',()=>{
   const document=new JSDOM('<main></main>').window.document;
   const root=document.querySelector('main'), expanded=new Set();

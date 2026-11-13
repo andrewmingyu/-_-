@@ -5,6 +5,8 @@ SYSTEM = '''당신은 기사 근거의 원출처를 추적하는 도우미다. �
 
 EXTRACT = '''기사의 요약과 원문에 명시된 주요 주장 1~3개, 근거 언급을 추출하라.
 summary는 짧은 요약 1~2문장으로 작성하고 문장마다 줄바꿈으로 분리한다. 각 문장은 가급적 90자 이내로 핵심 사건과 의미를 나눠 전달하며 글머리 기호는 넣지 않는다. 검토·예정·인용의 한정 표현을 보존한다.
+headline_explanation.meaning은 본문을 읽고 제목이 어떤 상황·내용을 뜻하는지 1~2문장으로 쉽게 설명한다. 기자의 속마음이나 의도를 추정하지 않는다. 이유가 원문에서 확인되지 않으면 빈 객체의 기본값을 사용한다.
+headline_explanation.reasons에는 제목이 그런 의미를 갖는 이유를 기사 속에서 1~4개 고른다. text는 주어와 핵심 내용을 유지한 간결한 표현이며 '~했다' 대신 '~주장', '~경고', '~표명', '~검토 중'처럼 끝낸다. 예: '이란 측은 청해부대 임무 확대가 미국의 대이란 침략 가담 행위라고 주장했다.' → '이란 측은 청해부대 임무 확대가 미국의 대이란 침략 가담 행위라고 주장'. 부정·검토·예정·인용·가능성 등의 한정 의미는 제거하지 않는다. 기본 화면에서 출처·타당성을 길게 평가하지 않는다. article_quote는 정확한 원문을 보존하며 줄여 쓰지 않는다. claim_ids와 mention_ids에는 실제 추출한 관련 ID만 연결하고 source_ids와 article_span은 서버가 채우므로 비워 둔다.
 입력 article_context에는 실제 기사 DOM에서 추출한 링크·인용이 있다. 근거를 찾을 때 이 정보를 참고하되 링크를 새로 만들지 마라.
 event에는 핵심 사건의 description/article_quote/time/location을 넣되 모두 기사 원문에 있는 표현만 사용하고 확인 불가능하면 null로 둔다.
 자료 종류는 official_release/public_record/research/statistics/interview/expert_comment/news_report/anonymous_statement/unknown으로 구분하라.
@@ -15,7 +17,9 @@ claim_text도 원문 표현을 그대로 사용하라. speaker, source_label, do
 claims에는 source_ids를 넣지 말고 source_status와 caution은 기본값을 유지한다. claim_ids와 mention_ids를 연결한다.
 evidence_mentions는 기사 자체가 근거로 제시한 자료/발언만 담는다. URL을 생성하지 않는다.
 headline_difference는 제목과 본문의 표현 차이만 기술한다. 사실 여부나 점수는 쓰지 않는다.
-context_timeline은 기사에서 명시적으로 확인되는 배경·사건 흐름을 1~4개 고르되 없으면 빈 목록으로 둔다. description과 article_quote는 원문 그대로 사용하고 date는 해당 인용에 나온 시점만 사용한다. 시점이 없으면 시점 미확인으로 적는다. 기사 밖 배경이나 사건 사이의 인과관계를 추가하지 않는다.'''
+context_timeline은 기사에서 명시적으로 확인되는 배경·주요 사건·이후 맥락을 시간순으로 1~4개 고르되 없으면 빈 목록으로 둔다. description과 article_quote는 원문 그대로 사용하고 date는 해당 인용에 나온 시점만 사용한다. 시점이 없으면 시점 미확인으로 적는다.
+각 timeline.label과 event.label은 '이메일로 외도 인정', '지원제도 개편 검토'처럼 6~16자 정도(최대 24자)의 짧은 명사형 표현으로 작성한다. 날짜는 label에 넣지 않는다. '~했다'라는 긴 문장이나 말줄임표를 사용하지 않는다. 검토·의혹·예정 등 중요한 한정 표현은 label에도 남긴다.
+타임라인 중 기사의 핵심 사건 하나만 is_main_event=true로 표시하고 해당 article_quote는 event.article_quote와 같은 원문 범위로 선택한다. 나머지는 그 사건 전후의 맥락으로 구성한다. 기사 밖 배경이나 사건 사이의 인과관계를 추가하지 않는다.'''
 
 TRACE = '''검색 결과에서 원출처 관계와 출처의 확인 가능한 속성만 추출하라.
 source_id는 제공한 ID만 사용하라. URL을 생성하거나 변경하지 마라.

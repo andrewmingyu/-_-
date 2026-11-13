@@ -24,9 +24,9 @@ async def provider_error(request, exc):
         'detail':exc.message,'error':{'code':exc.code,'provider':exc.provider,'retry_after_seconds':exc.retry_after_seconds}})
 
 
-async def run_analysis(request):
+async def run_analysis(request,preview=False):
     try:
-        return await analyzer.analyze(request)
+        return await (analyzer.preview(request) if preview else analyzer.analyze(request))
     except ArticleInputError as exc:
         raise HTTPException(422, str(exc)) from exc
     except ProviderError:
@@ -38,7 +38,7 @@ async def run_analysis(request):
 
 @app.get('/health')
 def health():
-    return {'status': 'ok', 'mode': analyzer.mode, 'schema_version': 'source-tracing-v1','data_version':'source-tracing-v1.3'}
+    return {'status': 'ok', 'mode': analyzer.mode, 'schema_version': 'source-tracing-v1','data_version':'source-tracing-v1.7'}
 
 
 @app.post('/api/articles/analyze', response_model=ArticleAnalysis)
@@ -59,11 +59,7 @@ def existing_analysis(article_id: str, url: str | None = None):
 
 @app.post('/api/preview', response_model=Preview)
 async def preview(request: AnalyzeRequest):
-    a = await run_analysis(request)
-    return Preview(article_id=a.article_id, is_demo=a.is_demo, summary=a.one_line_summary,
-        major_evidence=a.evidence_mentions[:2], sources=a.sources, headline_difference=a.headline_difference,
-        one_line_caution=a.caution.reasons[0], search_status=a.search_status, claims=a.claims[:2],
-        body_hash=a.body_hash,data_version=a.data_version,pipeline_errors=a.pipeline_errors)
+    return await run_analysis(request,preview=True)
 
 
 @app.post('/api/claims/check', response_model=SelectionAnalysis)

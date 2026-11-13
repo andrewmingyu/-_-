@@ -64,7 +64,7 @@ def test_reporting_comparison_uses_paired_quotes_and_preserves_source_analysis(m
         assert data['section_states']['related']['status'] == 'ready'
         assert data['claims'][0]['source_status'] == 'original_found'
         assert data['caution']['status'] == 'none_identified'
-        assert data['data_version'] == 'source-tracing-v1.3'
+        assert data['data_version'] == 'source-tracing-v1.7'
         assert '신뢰도' not in report['differences_summary']
         assert '확인하지 못했습니다' in report['independence']
 
