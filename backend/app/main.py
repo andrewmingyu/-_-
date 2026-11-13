@@ -6,12 +6,13 @@ from .clients import Gemini, Tavily
 from .models import AnalyzeRequest, ArticleAnalysis, Preview, SelectionRequest, SelectionAnalysis
 from .service import Analyzer, ArticleInputError
 from .errors import ProviderError
+from .official import Dart
 
 app = FastAPI(title='뉴스체크 AI — 출처 추적', version='1.0.0')
 app.add_middleware(CORSMiddleware, allow_origin_regex=r'chrome-extension://[a-p]{32}',
     allow_methods=['POST', 'GET'], allow_headers=['Content-Type'])
 analyzer = Analyzer(Gemini(), Tavily(), mode=os.getenv('ANALYSIS_MODE', 'mock'),
-    ttl=int(os.getenv('CACHE_TTL_SECONDS', '900')))
+    ttl=int(os.getenv('CACHE_TTL_SECONDS', '900')), official=Dart())
 if analyzer.mode not in ('mock', 'live'):
     raise RuntimeError('ANALYSIS_MODE는 mock 또는 live여야 합니다.')
 

@@ -3,6 +3,8 @@
 <h1>뉴스체크 AI 설정</h1><p>기사 본문과 선택 문장은 분석 서버로 전송됩니다. Gemini·Tavily 키는 서버 환경변수에만 설정합니다.</p>
 <label for="backendUrl">분석 서버 주소</label><input id="backendUrl" type="url" placeholder="http://127.0.0.1:8000">
 <button id="save" class="btn">저장</button><span id="saved" role="status" hidden></span>
+<label><input id="autoBadge" type="checkbox" checked> 기사를 열면 자동으로 분석하고 제목 옆에 표시</label><p>켜 두면 허용한 사이트의 기사를 열 때마다 분석 서버와 AI·검색 API가 호출되어 사용량이 늘어납니다.</p>
+<label for="site">자동 표시를 허용할 언론사 사이트 (네이버 뉴스는 기본 허용)</label><input id="site" type="text" placeholder="예: khan.co.kr"><button id="allow-site" class="btn">이 사이트 허용</button>
 <p><a href="../sidepanel/sidepanel.html?demo" target="_blank" rel="noopener">시연용 예시 보기</a></p>
 <p>이전 버전의 브라우저 API 키는 더 이상 사용하지 않습니다.</p><button id="clear-legacy" class="btn">이전 API 키 설정 삭제</button>
 <script type="module" src="options.js"></script></body></html>

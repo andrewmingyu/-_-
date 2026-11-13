@@ -35,6 +35,12 @@
   "host_permissions": [
     "https://news.naver.com/*",
     "https://n.news.naver.com/*",
+    "https://m.news.naver.com/*",
+    "https://entertain.naver.com/*",
+    "https://m.entertain.naver.com/*",
+    "https://sports.naver.com/*",
+    "https://m.sports.naver.com/*",
+    "https://*/*",
     "http://127.0.0.1/*",
     "http://localhost/*"
   ],
