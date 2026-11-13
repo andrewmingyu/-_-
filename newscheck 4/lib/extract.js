@@ -41,10 +41,27 @@ export function extractArticle(htmlText = null, pageUrl = null) {
     "h1.headline", "h1.article-title", "h1.title", ".article_title h1", ".article-head-title",
     "h1[itemprop='headline']", "[itemprop='headline']", "h3.tit_view", ".news_ttl", "h1",
   ];
+  // 선택자로 찾은 제목이 og:title·페이지 제목과 비슷할 때만 채택한다 (배너·로고 h1 제외)
+  const norm = (value) => String(value || '').replace(/[^0-9A-Za-z가-힣]/g, '');
+  const refTitles = [
+    meta("og:title", "twitter:title"),
+    typeof articleData.headline === 'string' ? articleData.headline : '',
+    document.title,
+  ].map(norm).filter((value) => value.length >= 4);
+  const matchesRef = (value) => {
+    if (!refTitles.length) return true;
+    const n = norm(value);
+    const grams = [];
+    for (let i = 0; i < n.length - 1; i++) grams.push(n.slice(i, i + 2));
+    return grams.length > 0 && refTitles.some((r) => grams.filter((g) => r.includes(g)).length / grams.length >= 0.6);
+  };
   let title = "";
   for (const s of headlineSelectors) {
-    const t = txt(document.querySelector(s));
-    if (t && t.length >= 8 && t.length <= 200) { title = t; break; }
+    for (const el of document.querySelectorAll(s)) {
+      const t = txt(el);
+      if (t && t.length >= 8 && t.length <= 200 && matchesRef(t)) { title = t; break; }
+    }
+    if (title) break;
   }
   if (!title) {
     title = meta("og:title", "twitter:title") || (typeof articleData.headline==='string'?articleData.headline:'') || document.title;
@@ -287,4 +304,88 @@ export function findQuote(quote) {
     }
   }
   return false;
+}
+
+// 기사 제목 옆에 "근거 확인 현황" 배지를 붙인다. (사실·거짓 판정이 아니라 출처 확인 상태 표시)
+// 기사 페이지 안에서 실행되므로 바깥 변수를 쓰지 않는 독립 함수여야 한다.
+export function markHeadline(title, info) {
+  const ID = 'newscheck-badge-host';
+  document.getElementById(ID)?.remove();
+  const norm = (value) => String(value || '').replace(/[^0-9A-Za-z가-힣]/g, '');
+  const ref = norm(title);
+  if (ref.length < 4 || !info) return false;
+  const near = (value) => {
+    const n = norm(value);
+    if (n.length < 4 || n.length > ref.length * 3) return false;
+    const grams = [];
+    for (let i = 0; i < n.length - 1; i++) grams.push(n.slice(i, i + 2));
+    return grams.length > 0 && grams.filter((g) => ref.includes(g)).length / grams.length >= 0.6;
+  };
+  const heading = [...document.querySelectorAll('h1, h2, h3, [itemprop="headline"], #title_area, .media_end_head_headline')]
+    .find((el) => near(el.innerText || el.textContent));
+  if (!heading) return false;
+
+  const host = document.createElement('span');
+  host.id = ID;
+  host.style.cssText = 'display:inline-block;vertical-align:middle;margin-left:10px;position:relative;font-size:0;line-height:1;';
+  const root = host.attachShadow({ mode: 'open' });
+  const style = document.createElement('style');
+  style.textContent = [
+    ':host{all:initial}',
+    '*{box-sizing:border-box;font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif}',
+    '.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #5b4cf0;background:#eeecfe;color:#3b2fb8;border-radius:999px;padding:4px 10px;font-size:12px;line-height:1.2;font-weight:700;cursor:pointer}',
+    '.chip.lvl-high{border-color:#1f9d55;background:#e6f6ec;color:#146c3a}',
+    '.chip.lvl-mid{border-color:#d49a00;background:#fff6d6;color:#7a5800}',
+    '.chip.lvl-low{border-color:#d64545;background:#fde8e8;color:#9b1c1c}',
+    '.chip.lvl-hold{border-color:#8a8aa0;background:#f0f0f5;color:#4a4a5c}',
+    '.chip .warn{color:#b25e00;background:#fff1dc;border-radius:999px;padding:1px 7px;font-weight:700}',
+    '.pop{position:absolute;left:0;top:calc(100% + 8px);z-index:2147483647;width:300px;max-width:80vw;background:#fff;color:#1b1b28;border:1px solid #e7e7f0;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:12px 14px;font-size:13px;line-height:1.55;text-align:left;font-weight:400}',
+    '.pop[hidden]{display:none}',
+    '.pop h4{margin:0 0 6px;font-size:12px;color:#3b2fb8}',
+    '.pop p{margin:0 0 6px}',
+    '.pop .head{font-weight:700;font-size:14px}',
+    '.pop ul{margin:0 0 6px;padding-left:18px;color:#5d5d72}',
+    '.pop .note{font-size:12px;color:#5d5d72;margin:6px 0 0}',
+  ].join('');
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'chip' + (/^(high|mid|low|hold)$/.test(String(info.level)) ? ' lvl-' + info.level : '');
+  chip.setAttribute('aria-expanded', 'false');
+  chip.setAttribute('aria-label', '뉴스체크 근거 확인 현황');
+  const label = document.createElement('span');
+  label.textContent = String(info.label || '근거 확인 현황');
+  chip.appendChild(label);
+  if (info.caution) {
+    const warn = document.createElement('span');
+    warn.className = 'warn';
+    warn.textContent = String(info.caution);
+    chip.appendChild(warn);
+  }
+  const pop = document.createElement('div');
+  pop.className = 'pop';
+  pop.hidden = true;
+  const add = (tag, cls, text) => { const el = document.createElement(tag); if (cls) el.className = cls; el.textContent = String(text); pop.appendChild(el); return el; };
+  add('h4', '', '뉴스체크 · 근거 확인 현황');
+  add('p', 'head', info.headline || '');
+  if (Array.isArray(info.lines) && info.lines.length) {
+    const ul = document.createElement('ul');
+    info.lines.forEach((line) => { const li = document.createElement('li'); li.textContent = String(line); ul.appendChild(li); });
+    pop.appendChild(ul);
+  }
+  if (info.partial) add('p', '', '일부 단계를 처리하지 못해 결과가 불완전해요.');
+  add('p', 'note', info.note || '');
+  const close = () => { pop.hidden = true; chip.setAttribute('aria-expanded', 'false'); };
+  chip.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    pop.hidden = !pop.hidden;
+    chip.setAttribute('aria-expanded', String(!pop.hidden));
+  });
+  document.addEventListener('click', (event) => { if (!host.isConnected) return; if (!event.composedPath().includes(host)) close(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+  root.appendChild(style);
+  root.appendChild(chip);
+  root.appendChild(pop);
+  heading.appendChild(host);
+  return true;
 }

@@ -148,11 +148,12 @@ def clean_context(context, text):
 
 
 class Analyzer:
-    def __init__(self, llm, search, mode='live', ttl=900):
+    def __init__(self, llm, search, mode='live', ttl=900, official=None):
         if mode == 'mock':
             from .mock import MockLLM, MockSearch
-            llm, search = MockLLM(), MockSearch()
+            llm, search, official = MockLLM(), MockSearch(), None
         self.llm, self.search, self.mode, self.ttl = llm, search, mode, ttl
+        self.official = official  # 공식 공시 조회(DART 등). 없으면 건너뛴다.
         self.cache, self.inflight = {}, {}
 
     def cache_key(self, request, focus=None):
@@ -162,7 +163,7 @@ class Analyzer:
             metadata['url'] = normalize_url(request.url)
         return body_hash(json.dumps([normalize_url(request.url), body_hash(request.page_text),
             request.title, metadata, clean_context(request.article_context,request.page_text).model_dump(mode='json'),
-            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.3', focus], ensure_ascii=False))
+            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.5', focus], ensure_ascii=False))
 
     def lookup(self, article_id, url=None):
         url = normalize_url(url) if url is not None else None
@@ -223,15 +224,38 @@ class Analyzer:
                 message=error.message,retry_after_seconds=error.retry_after_seconds))
         queries = list(dict.fromkeys(' '.join(filter(None, [m.source_label, m.document_title, m.article_quote[:120]])) for m in mentions))[:3]
         for link in request.article_context.cited_links:
+            # 포털의 검색 결과 페이지 링크는 출처 자료가 아니므로 검색어로 쓰지 않는다.
+            if (urlsplit(str(link.url)).hostname or '').startswith('search.') or urlsplit(str(link.url)).path.startswith('/search'):
+                continue
             if any(link.text in m.article_quote for m in mentions):
                 query = str(link.url) + ' ' + link.text
                 if query not in queries:
                     queries.insert(0,query)
         queries = queries[:3]
-        for query in queries:
+        # 관련 기사 검색은 원출처 검색과 서로 기다릴 필요가 없으므로 먼저 시작해 둔다.
+        related_task = asyncio.ensure_future(self.search.search(request.title[:200], topic='news')) if request.title and not focus else None
+        async def fetch(query):
             try:
                 rows = await self.search.search(query)
             except Exception as exc:
+                return None, exc
+            extra = getattr(self.search, 'search_in', None)
+            if extra:
+                try:
+                    rows = list(rows) + list(await extra(query))
+                except Exception:
+                    pass  # 유튜브·네이버 보조 검색 실패는 원출처 검색 상태에 영향을 주지 않는다.
+            return rows, None
+        # 검색어마다 순서대로 기다리지 않고 한꺼번에 실행한다(결과는 검색어 순서대로 처리).
+        fetched = await asyncio.gather(*(fetch(q) for q in queries))
+        batches = list(zip(queries, fetched))
+        if self.official:
+            try:  # 공식 자료 조회 실패는 원출처 검색 상태에 영향을 주지 않는다.
+                batches.append((None, (await self.official.search(request.title, request.page_text), None)))
+            except Exception:
+                pass
+        for query, (rows, exc) in batches:
+            if exc is not None:
                 record_error(exc, 'source_search', 'tavily')
                 search_errors.append('원출처 검색 요청이 실패했습니다. 다시 시도할 수 있습니다.')
                 continue
@@ -308,7 +332,7 @@ class Analyzer:
         related, report_materials = [], {}
         if request.title and not focus:
             try:
-                rows = await self.search.search(request.title[:200], topic='news')
+                rows = await related_task
                 hosts = set()
                 for row in rows:
                     try:

@@ -1,3 +1,5 @@
+import { traceSummary, TRACE_NOTE, credibility, CRED_NOTE } from './summary.js';
+
 export const SOURCE_LABELS = { original_found: '원본 자료 확인', secondary_only: '재인용 자료만 확인', source_not_found: '원출처를 찾지 못함', unknown: '확인에 필요한 정보 부족' };
 export const CAUTION_LABELS = { caution: '주의사항 표시 필요', none_identified: '현재 별도 주의사항을 발견하지 못함', unknown: '출처 분석 정보 부족' };
 export const TYPE_LABELS = { factual_narration: '사실 서술', quotation: '발언·인용', opinion: '의견', interpretation: '해석', prediction: '예측', context: '배경·맥락', statistics: '통계·연구', unknown: '유형 미확인' };
@@ -118,10 +120,37 @@ function sectionMarkup(a,s,expanded) {
   const status=state&&s.id!=='metadata'?'<p class="section-state" role="status">'+esc(({ready:'정보 준비됨',empty:'확인된 정보 없음',partial:'일부 정보 미확인',error:'처리 실패',loading:'분석 중'})[state.status] || '상태 미확인')+(state.message?' · '+esc(state.message):'')+'</p>':'';
   return '<section class="card analysis-section'+(s.id==='metadata'?' compact-metadata':'')+'" data-section="'+s.id+'"><div class="section-heading"><h2>'+s.title+'</h2><button type="button" data-toggle="'+s.id+'" aria-label="'+s.title+' '+(expanded.has(s.id)?'접기':'자세히 보기')+'" aria-expanded="'+expanded.has(s.id)+'" aria-controls="details-'+s.id+'">'+(expanded.has(s.id)?'접기 ∧':'자세히 보기 ›')+'</button></div>'+status+'<div id="summary-'+s.id+'"'+(expanded.has(s.id)?' hidden':'')+'>'+s.summary+'</div><div id="details-'+s.id+'"'+(!expanded.has(s.id)?' hidden':'')+'>'+s.details+'</div></section>';
 }
+
+function credStrip(a) {
+  const c = credibility(a);
+  if (!c) return '';
+  const rows = c.factors.map(f => '<li><span class="ncs-name">' + esc(f.label) + '</span><span class="ncs-score">' + f.score + '점</span><span class="ncs-detail">' + esc(f.detail) + '</span></li>').join('');
+  const skipped = c.unmeasured.length ? '<p class="trace-note">계산에서 제외: ' + esc(c.unmeasured.join(', ')) + '</p>' : '';
+  return '<section class="card ncs ncs-' + c.level + '" aria-label="종합 신뢰 지수"><div class="ncs-top"><span class="ncs-level">' + c.icon + ' ' + esc(c.text) + '</span>' +
+    (c.percent === null ? '' : '<span class="ncs-pct">' + c.percent + '%</span>') + '</div>' +
+    (c.percent === null ? '' : '<div class="ncs-bar" role="img" aria-label="신뢰 지수 ' + c.percent + '퍼센트"><i style="width:' + c.percent + '%"></i></div>') +
+    '<p class="trace-headline">' + esc(c.hint) + '</p><ul class="ncs-list">' + rows + '</ul>' + skipped +
+    '<p class="trace-note">사진 자료의 날짜는 읽지 못해 반영하지 않았어요.</p><p class="trace-note">' + esc(CRED_NOTE) + '</p></section>';
+}
+
+function traceStrip(a) {
+  const t = traceSummary(a);
+  if (!t) return '';
+  const cells = t.cells.map(c => '<span class="trace-cell trace-' + c.key + '" title="' + esc(c.label) + '"></span>').join('');
+  const legend = t.legend.map(l => '<li><i class="trace-dot trace-' + l.key + '" aria-hidden="true"></i>' + esc(l.label) + ' ' + l.count + '</li>').join('');
+  const aria = t.legend.map(l => l.label + ' ' + l.count).join(', ');
+  return '<section class="card trace-strip" aria-label="근거 확인 현황"><div class="trace-top"><span class="trace-kicker">근거 확인 현황</span>' +
+    (t.caution ? '<span class="trace-badge caution">주의할 점 ' + (t.cautionCount ? t.cautionCount + '건' : '있음') + '</span>' : '') +
+    (t.partial ? '<span class="trace-badge">일부 단계 미완료</span>' : '') + '</div>' +
+    '<p class="trace-headline">' + esc(t.headline) + '</p>' +
+    (t.total ? '<div class="trace-cells" role="img" aria-label="' + esc(aria) + '">' + cells + '</div><ul class="trace-legend">' + legend + '</ul>' : '') +
+    '<p class="trace-note">' + esc(TRACE_NOTE) + '</p></section>';
+}
+
 export function renderAnalysis(container, a, expanded = new Set()) {
   const sections=sectionData(a);
   const summary=a.ui_state?'<p>'+esc(a.one_line_summary)+'</p>':'<ul class="summary-list">'+summaryLines(a.one_line_summary).map(line=>'<li>'+esc(line)+'</li>').join('')+'</ul>';
-  container.innerHTML = (a.is_demo ? '<div class="demo-banner" role="status">시연용 예시 · 실제 기사나 실제 출처 분석 결과가 아닙니다.</div>' : '') +
+  container.innerHTML = (a.is_demo ? '<div class="demo-banner" role="status">시연용 예시 · 실제 기사나 실제 출처 분석 결과가 아닙니다.</div>' : '') + credStrip(a) + traceStrip(a) +
     '<div class="overview-grid"><div class="analysis-summary"><span>'+(a.ui_state==='loading'?'분석 중':a.ui_state==='error'?'분석 요청 실패':a.analysis_status==='partial'?'부분 분석':'출처 분석 완료')+'</span><h2>한 줄 요약</h2>'+summary+'</div>'+sectionMarkup(a,sections.find(s=>s.id==='metadata'),expanded)+'</div>'+errorList(a.pipeline_errors)+
     '<div class="analysis-grid">'+sections.filter(s=>s.id!=='metadata').map(s=>sectionMarkup(a,s,expanded)).join('')+'</div>'+
     '<div class="card"><h2>제목과 본문 표현의 차이</h2><p>' + esc(a.headline_difference) + '</p><p class="trace-note">' + esc(a.final_comment) + '</p><p class="muted">분석 시각: ' + esc(a.analyzed_at) + '</p></div>';
