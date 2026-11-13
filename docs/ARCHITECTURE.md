@@ -74,9 +74,9 @@ Mock는 실제 외부 서비스를 규칙/가상 자료로 대신해 프로그�
 ## 구성
 | 구성 | 실제 파일 | 책임 |
 |---|---|---|
-| 콘텐츠 스크립트 | newscheck 4/content.js | 네이버 Hover/선택, Shadow DOM 팝업 |
+| 콘텐츠 스크립트 | newscheck 4/content.js | 네이버 뉴스·연합뉴스TV Hover/선택, Shadow DOM 팝업 |
 | 기사 추출 | newscheck 4/lib/extract.js | selector·meta·문단 기반 DOM 추출; Readability 미도입 |
-| 서비스 워커 | newscheck 4/background.js | 메시지 경로 제한, 네이버 HTML fetch, 서버 요청 |
+| 서비스 워커 | newscheck 4/background.js | 메시지 경로 제한, 허용된 네이버 뉴스·연합뉴스TV 기사 HTML fetch, 서버 요청 |
 | 패널 | sidepanel/*, shared/view.js | 요약 글머리표 옆 작은 기본 정보·네모/화살표 배경·한 줄 관련 보도·6개 독립 카드·표현 차이 |
 | 설정·클라이언트 | options/*, shared/api.js | 서버 주소/권한, 응답 검사; 브라우저 키 사용 안 함 |
 | 데이터 계약 | shared/types.ts, backend/app/models.py | TS 입출력 타입 및 Pydantic 검증 |

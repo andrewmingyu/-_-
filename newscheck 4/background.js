@@ -1,8 +1,7 @@
 import { requestAnalysis, getAnalysis } from './shared/api.js';
-import { normalizeArticleUrl } from './shared/article.js';
+import { normalizeArticleUrl, articleRequest, isSupportedArticleUrl } from './shared/article.js';
 import { ArticleInputCache } from './shared/cache.js';
 import { extractArticle, markHeadline } from './lib/extract.js';
-import { articleRequest } from './shared/article.js';
 import { badgeInfo } from './shared/summary.js';
 const panel=()=>chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true}).catch(()=>{});
 chrome.runtime.onInstalled.addListener(panel);
@@ -13,7 +12,7 @@ let requestOrder=0;
 const allowed=new Set(['NEWSCHECK_ANALYZE','NEWSCHECK_PREVIEW','NEWSCHECK_SELECTION','NEWSCHECK_FETCH_ARTICLE','NEWSCHECK_GET_CACHED_ARTICLE']);
 function articleUrl(value) {
   const url=new URL(normalizeArticleUrl(value));
-  if(url.protocol!=='https:' || !['news.naver.com','n.news.naver.com'].includes(url.hostname) || !/\/(?:mnews\/)?article\//.test(url.pathname))throw new Error('지원하지 않는 기사 링크입니다.');
+  if(!isSupportedArticleUrl(url.href))throw new Error('지원하지 않는 기사 링크입니다.');
   return url.href;
 }
 async function fetchArticle(value) {
