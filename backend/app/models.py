@@ -234,7 +234,7 @@ class RelatedArticle(Model):
 
 class ArticleAnalysis(Model):
     schema_version: Literal['source-tracing-v1'] = 'source-tracing-v1'
-    data_version: str = 'source-tracing-v1.10'
+    data_version: str = 'source-tracing-v1.11'
     article_id: str
     body_hash: str
     analysis_status: Literal['partial', 'complete']
@@ -363,7 +363,7 @@ class Preview(Model):
     search_status: SearchStatus
     claims: list[Claim] = Field(default_factory=list)
     body_hash: str = ''
-    data_version: str = 'source-tracing-v1.10'
+    data_version: str = 'source-tracing-v1.11'
     pipeline_errors: list[PipelineError] = Field(default_factory=list)
 
 
