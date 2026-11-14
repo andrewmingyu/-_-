@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
-import { renderAnalysis, renderAnalysisState, renderPreview, renderSelection, safeLink, reasonPhrase } from '../newscheck 4/shared/view.js';
+import { renderAnalysis, renderAnalysisState, renderPreview, renderSelection, safeLink, reasonPhrase, formatEventDate } from '../newscheck 4/shared/view.js';
 import { validateAnalysis, validateSelection, validatePreview, requestAnalysis, backendUrl } from '../newscheck 4/shared/api.js';
 const fixture=JSON.parse(fs.readFileSync(new URL('../newscheck 4/data/demo.json',import.meta.url),'utf8'));
 
@@ -125,7 +125,19 @@ test('context boxes use short phrases with a separate date and one emphasized ma
   const boxes=[...root.querySelectorAll('#summary-context .context-step')];
   assert.equal(boxes.filter(b=>b.classList.contains('context-main')).length,1);
   assert.deepEqual(boxes.map(b=>b.querySelector('p').textContent),fixture.context_timeline.map(t=>t.label));
-  assert.ok(boxes.every(b=>b.querySelector('.context-date')&&!b.querySelector('p').textContent.includes('…')));
+  assert.ok(boxes.every(b=>!b.querySelector('p').textContent.includes('…')));
+  // 원문 날짜는 그대로, 날짜가 없으면 '시점 미확인' 대신 보도 시점(기사 작성일)을 구분해 표시
+  boxes.forEach((b,i)=>{
+    const date=fixture.context_timeline[i].date, tag=b.querySelector('.context-date');
+    if(date && date!=='시점 미확인') { assert.equal(tag.textContent,formatEventDate(date)); assert.ok(!tag.classList.contains('context-date-report')); }
+    else { assert.match(tag.textContent,/^\d{4}년 \d{1,2}월 \d{1,2}일 \(보도일\)$/); assert.ok(tag.classList.contains('context-date-report')); }
+  });
+  assert.doesNotMatch(root.querySelector('#summary-context').textContent,/시점 미확인/);
+  // 기사 작성일도 없으면 날짜 칸을 비운다
+  const noDate=structuredClone(fixture); noDate.article.published_at=null;
+  noDate.context_timeline.forEach(t=>t.date='시점 미확인');
+  renderAnalysis(root,noDate);
+  assert.equal(root.querySelectorAll('#summary-context .context-date').length,0);
 });
 
 test('six independent accessible controls keep all other cards open and survive refresh',()=>{
@@ -334,6 +346,7 @@ test('foreign-language claims and evidence show a Korean AI translation beside t
   const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),data=structuredClone(fixture);
   data.claims[0].translation='김정은은 비핵화를 내세워 제재를 약화하려 한다';
   data.evidence_mentions[0].translation='그는 2007년 김정일을 만났다';
+  data.evidence_mentions[0].article_quote=data.evidence_mentions[0].description='He met Kim Jong-il in 2007.';
   renderAnalysis(root,data,new Set(['claims','evidence']));
   assert.match(root.querySelector('#summary-claims').textContent,/주장 1 · 김정은은 비핵화를/);
   const claims=root.querySelector('#details-claims').textContent;
@@ -347,4 +360,29 @@ test('foreign-language claims and evidence show a Korean AI translation beside t
   assert.doesNotMatch(plain.textContent,/AI 번역/);
   const selection=renderSelection({is_demo:true,claims:data.claims.slice(0,1),sources:[],caution:fixture.caution});
   assert.match(selection,/AI 번역/);
+});
+
+test('evidence identical to a claim is not repeated and shows only its source',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),data=structuredClone(fixture);
+  // 시연 데이터처럼 근거 문장이 주장 원문과 같은 경우
+  data.evidence_mentions[0].article_quote=data.claims[0].original_text;
+  data.evidence_mentions[0].source_label='가상정책연구소';
+  data.evidence_mentions[0].translation='반복되면 안 되는 번역';
+  renderAnalysis(root,data,new Set(['evidence']));
+  const summary=root.querySelector('#summary-evidence').textContent, details=root.querySelector('#details-evidence').textContent;
+  assert.match(summary,/출처: 가상정책연구소/);
+  assert.match(summary,/주장 1과 같은 문장을 근거로 제시/);
+  assert.match(details,/주장 1과 같은 문장이에요/);
+  assert.doesNotMatch(summary+details,/반복되면 안 되는 번역/);
+  assert.ok(root.querySelector('#details-evidence [data-quote]'),'본문에서 보기 유지');
+  // 출처 표기가 없으면 연결된 주장의 발언자를 쓴다
+  data.evidence_mentions[0].source_label=null; data.claims[0].speaker='이성윤 교수';
+  renderAnalysis(root,data,new Set(['evidence']));
+  assert.match(root.querySelector('#summary-evidence').textContent,/출처: 이성윤 교수/);
+});
+
+test('event dates share one format without inventing missing year or month', () => {
+  const cases = {'1950':'1950년','2007년':'2007년','9일(현지 시각)':'9일 (현지시간)','8일(현지시간)':'8일 (현지시간)','9일':'9일',
+    '2018.03.09':'2018년 3월 9일','2018년 03월 09일':'2018년 3월 9일','March 12, 2018':'2018년 3월 12일','12 March 2018':'2018년 3월 12일','March 2018':'2018년 3월','지난 3월':'지난 3월','최근':'최근'};
+  for (const [raw, want] of Object.entries(cases)) assert.equal(formatEventDate(raw), want, raw);
 });

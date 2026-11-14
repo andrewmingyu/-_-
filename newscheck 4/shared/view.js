@@ -42,6 +42,38 @@ function sourceDetails(s, demo) {
 // 외국어 기사: 요약 자리에는 한국어 번역을, 상세에는 원문 + 번역을 함께 보여준다
 const translated = (item, fallback) => item?.translation || fallback;
 const translationLine = item => item?.translation ? '<p class="translation"><span class="trace-badge">AI 번역</span> ' + esc(item.translation) + '</p>' : '';
+// 날짜 표기 통일: 'YYYY년 M월 D일' + 필요하면 괄호 꼬리표 (현지시간)/(보도일).
+// 원문에 없는 연·월은 채우지 않는다 (예: '9일'은 '9일'로 둔다. 기사 작성일이 틀린 사이트가 있어 추정하지 않음)
+const EN_MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+const monthNum = w => EN_MONTHS[String(w).slice(0,3).toLowerCase()];
+const ymd = (y, m, d) => [y && Number(y) + '년', m && Number(m) + '월', d && Number(d) + '일'].filter(Boolean).join(' ');
+export function formatEventDate(raw) {
+  let s = String(raw || '').trim();
+  if (!s) return '';
+  let tag = '';
+  s = s.replace(/[(（]?\s*(현지|한국)\s*시[각간]\s*(기준)?\s*[)）]?/g, (_, where) => { tag = '(' + where + '시간)'; return ' '; }).trim();
+  let prefix = '';
+  s = s.replace(/^(지난|오는|올해|작년|지난해|내년)\s*/, (_, w) => { prefix = w + ' '; return ''; });
+  let core = null, m;
+  if ((m = s.match(/^(\d{4})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})\.?$/))) core = ymd(m[1], m[2], m[3]);
+  else if ((m = s.match(/^(\d{4})\s*[.\-/]\s*(\d{1,2})\.?$/))) core = ymd(m[1], m[2]);
+  else if ((m = s.match(/^(?:(\d{4})\s*년)?\s*(?:(\d{1,2})\s*월)?\s*(?:(\d{1,2})\s*일)?\s*(초|중순|말|께|쯤|경)?$/)) && (m[1] || m[2] || m[3])) core = ymd(m[1], m[2], m[3]) + (m[4] ? ' ' + m[4] : '');
+  else if ((m = s.match(/^(\d{4})$/))) core = m[1] + '년';
+  else if ((m = s.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?$/)) && monthNum(m[1])) core = ymd(m[3], monthNum(m[1]), m[2]);
+  else if ((m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\.?,?(?:\s+(\d{4}))?$/)) && monthNum(m[2])) core = ymd(m[3], monthNum(m[2]), m[1]);
+  else if ((m = s.match(/^([A-Za-z]{3,9})\.?,?\s+(\d{4})$/)) && monthNum(m[1])) core = ymd(m[2], monthNum(m[1]));
+  return (prefix + (core ?? s)).trim() + (tag ? ' ' + tag : '');
+}
+// 원문 문장에 적힌 날짜가 있으면 그 날짜를, 없으면 그 내용이 보도된 시점(기사 작성일)을 '(보도일)'로 구분해 표시
+const knownDate = d => d && d !== '시점 미확인' ? d : '';
+function dateTag(a, d) {
+  if (knownDate(d)) return {text:formatEventDate(d), report:false};
+  const published = String(a.article?.published_at || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return published ? {text:ymd(published[1], published[2], published[3]) + ' (보도일)', report:true} : null;
+}
+// 상자가 좁아도 '2018년 3월 9일' / '(보도일)' 단위로만 줄바꿈되게 나눠 담는다
+const dateParts = text => esc(text).split(/ (?=\()/).map(part => '<span class="date-part">' + part + '</span>').join(' ');
+const dateSpan = tag => tag ? '<span class="context-date' + (tag.report ? ' context-date-report" title="문장에 날짜가 없어 기사 작성일(보도 시점)을 표시했어요' : '') + '">' + dateParts(tag.text) + '</span>' : '';
 function citedSources(a) { return (a.sources || []).filter(s => s.discovery === 'article_cited'); }
 // 근거마다 어떤 주장의 근거인지 표시 (주장 번호는 기사의 주장 카드 순서)
 function claimTags(a, ids) {
@@ -167,7 +199,7 @@ function contextFlow(a) {
   }]:[];
   if(!nodes.length)return '<p class="muted">기사에서 확인할 수 있는 배경 정보가 없습니다.</p>';
   return '<div class="context-flow" role="list" aria-label="기사에서 확인한 흐름" tabindex="0">'+nodes.map((node,index)=>
-    (index?'<span class="context-arrow" aria-hidden="true">→</span>':'')+'<div class="context-step'+(node.is_main_event?' context-main':'')+'" role="listitem"'+(node.is_main_event?' aria-label="주요 사건"':'')+'><span class="context-date">'+esc(node.date)+'</span>'+(node.is_main_event?'<span class="context-main-label">주요 사건</span>':'')+'<p title="'+esc(node.description)+'">'+esc(node.label || (node.is_main_event?'주요 사건':'배경 정보'))+'</p></div>'
+    (index?'<span class="context-arrow" aria-hidden="true">→</span>':'')+'<div class="context-step'+(node.is_main_event?' context-main':'')+'" role="listitem"'+(node.is_main_event?' aria-label="주요 사건"':'')+'>'+dateSpan(dateTag(a,node.date))+(node.is_main_event?'<span class="context-main-label">주요 사건</span>':'')+'<p title="'+esc(node.description)+'">'+esc(node.label || (node.is_main_event?'주요 사건':'배경 정보'))+'</p></div>'
   ).join('')+'</div>';
 }
 function headlineCard(a,expanded) {
@@ -191,17 +223,32 @@ export function sectionData(a) {
   const metadata = '<dl>' + [['언론사',article.publisher],['기자',article.author],['작성일',article.published_at?compactDate(article.published_at):null]].map(([k,v]) => '<dt>' + k + '</dt><dd>' + esc(v || '미확인') + '</dd>').join('') + '</dl>';
   const timeline = contextFlow(a);
   const event=a.event?.description?'<details class="event-original"><summary>핵심 사건 원문</summary><blockquote>'+esc(a.event.article_quote || a.event.description)+'</blockquote></details>':'';
-  const timelineDetails = a.context_timeline.map(t=>'<div class="source-row"><p>'+esc(t.date+' → '+t.description)+'</p><button class="link-btn" data-quote="'+esc(t.article_quote)+'">본문에서 보기</button>'+(t.source_ids||[]).map(id=>a.sources.find(s=>s.id===id)).filter(Boolean).map(s=>'<p>'+safeLink(s.url,s.title,a.is_demo)+'</p>').join('')+'</div>').join('');
+  const timelineDetails = a.context_timeline.map(t=>'<div class="source-row"><p>'+esc((dateTag(a,t.date)?dateTag(a,t.date).text+' → ':'')+t.description)+'</p><button class="link-btn" data-quote="'+esc(t.article_quote)+'">본문에서 보기</button>'+(t.source_ids||[]).map(id=>a.sources.find(s=>s.id===id)).filter(Boolean).map(s=>'<p>'+safeLink(s.url,s.title,a.is_demo)+'</p>').join('')+'</div>').join('');
   const claimSummary = list(a.claims.slice(0,2).map((c,i) => '주장 ' + (i+1) + ' · ' + translated(c, c.claim_text)));
   const cited = citedSources(a);
+  const norm = t => String(t || '').replace(/\s+/g,' ').trim();
+  // 근거로 뽑은 문장이 주장 원문과 겹치면 그 주장 번호를 돌려준다 (같은 문장을 두 번 보여주지 않기 위해)
+  const sameClaimNo = m => {
+    const q = norm(m.article_quote);
+    const i = a.claims.findIndex(c => { const o = norm(c.original_text); return q && o && (q.includes(o) || o.includes(q)); });
+    return i < 0 ? 0 : i + 1;
+  };
+  // 출처 이름: 근거의 출처 표기 → 없으면 연결된 주장의 발언자
+  const sourceName = m => m.source_label || a.claims.filter(c => m.claim_ids.includes(c.id) && c.speaker).map(c => c.speaker)[0] || '';
   const mentionRow = m => {
     const claims = a.claims.filter(c => m.claim_ids.includes(c.id));
     const sources = cited.filter(s => s.mention_ids.includes(m.id));
-    return '<div class="source-row">' + claimTags(a, m.claim_ids) + '<strong>' + esc(translated(m, m.description)) + '</strong><p>기사의 출처 표기: ' + esc(m.source_label || '명시되지 않음') + '</p>' + [...new Set(claims.map(c => SOURCE_LABELS[c.source_status]))].map(l => pill(l)).join('') + sources.slice(0,1).map(s => '<p>' + safeLink(s.url,s.title,a.is_demo) + '</p><p class="compact-summary">' + esc(s.summary) + '</p>').join('') + '</div>';
+    const same = sameClaimNo(m), name = sourceName(m);
+    const head = same ? '<strong>' + esc(name ? '출처: ' + name : '출처를 밝히지 않은 문장') + '</strong><p class="muted">주장 ' + same + '과 같은 문장을 근거로 제시</p>'
+      : '<strong>' + esc(translated(m, m.description)) + '</strong><p>기사의 출처 표기: ' + esc(name || '명시되지 않음') + '</p>';
+    return '<div class="source-row">' + claimTags(a, m.claim_ids) + head + [...new Set(claims.map(c => SOURCE_LABELS[c.source_status]))].map(l => pill(l)).join('') + sources.slice(0,1).map(s => '<p>' + safeLink(s.url,s.title,a.is_demo) + '</p><p class="compact-summary">' + esc(s.summary) + '</p>').join('') + '</div>';
   };
   const mentionDetail = m => {
     const sources = cited.filter(s => s.mention_ids.includes(m.id));
-    return '<div class="source-row" id="evidence-mention-'+esc(m.id)+'">' + claimTags(a, m.claim_ids) + '<p>기사에서 제시한 근거: ' + esc(m.article_quote) + '</p>' + translationLine(m) + '<p>기사의 출처 표기: ' + esc(m.source_label || '명시되지 않음') + ' · 자료 종류: ' + esc(kindLabel(m.source_kind)) + '</p><button class="link-btn" data-quote="' + esc(m.article_quote) + '">본문에서 보기</button>' +
+    const same = sameClaimNo(m), name = sourceName(m);
+    const quote = same ? '<p>기사에서 제시한 근거: 주장 ' + same + '과 같은 문장이에요. 원문과 번역은 기사의 주장 카드에서 볼 수 있어요.</p>'
+      : '<p>기사에서 제시한 근거: ' + esc(m.article_quote) + '</p>' + translationLine(m);
+    return '<div class="source-row" id="evidence-mention-'+esc(m.id)+'">' + claimTags(a, m.claim_ids) + quote + '<p>기사의 출처 표기: ' + esc(name || '명시되지 않음') + ' · 자료 종류: ' + esc(kindLabel(m.source_kind)) + '</p><button class="link-btn" data-quote="' + esc(m.article_quote) + '">본문에서 보기</button>' +
       (sources.length ? sources.map(s => '<div id="evidence-source-'+esc(s.id)+'">'+sourceDetails(s,a.is_demo)+'</div>').join('') : '<p class="muted">이 근거의 원문 자료는 확보하지 못했습니다.</p>') + '</div>';
   };
   const linked = new Set(a.evidence_mentions.flatMap(m => cited.filter(s => s.mention_ids.includes(m.id)).map(s => s.id)));
