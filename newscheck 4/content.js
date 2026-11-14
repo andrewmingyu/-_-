@@ -1,9 +1,43 @@
 (async () => {
-  const [{extractArticle}, {articleRequest,previewFromAnalysis,isSupportedArticleUrl}, view] = await Promise.all([
-    import(chrome.runtime.getURL('lib/extract.js')),
-    import(chrome.runtime.getURL('shared/article.js')),
-    import(chrome.runtime.getURL('shared/view.js'))
-  ]);
+  const expiredMessage = '확장 프로그램이 갱신되어 이 페이지와의 연결이 끊겼습니다. 기사 페이지를 새로고침(F5)한 뒤 다시 시도해 주세요.';
+  let contextExpired = false;
+  function runtimeError(error) {
+    let active = false;
+    try { active = Boolean(chrome.runtime?.id); } catch { /* Detached extension context. */ }
+    if (contextExpired || !active || /extension context invalidated/i.test(error?.message || '')) {
+      contextExpired = true;
+      return new Error(expiredMessage);
+    }
+    return error;
+  }
+  async function message(request) {
+    if (contextExpired) throw new Error(expiredMessage);
+    try {
+      if (!chrome.runtime?.id) throw new Error(expiredMessage);
+      return await chrome.runtime.sendMessage(request);
+    } catch (error) { throw runtimeError(error); }
+  }
+  let modules;
+  try {
+    if (!chrome.runtime?.id) throw new Error(expiredMessage);
+    modules = await Promise.all([
+      import(chrome.runtime.getURL('lib/extract.js')),
+      import(chrome.runtime.getURL('shared/article.js')),
+      import(chrome.runtime.getURL('shared/view.js'))
+    ]);
+  } catch (error) {
+    // Imports can also be interrupted by an extension reload. Avoid an unhandled rejection.
+    const notice = document.createElement('div');
+    notice.id = '__newscheck_popup';
+    notice.setAttribute('role','alert');
+    notice.style.cssText = 'position:fixed;right:16px;top:16px;z-index:2147483647;background:#fff;padding:16px;max-width:380px;color:#222;border:1px solid #ddd;border-radius:12px';
+    notice.textContent = runtimeError(error).message;
+    const close = document.createElement('button');
+    close.textContent = '닫기'; close.onclick = () => notice.remove();
+    notice.append(close); document.documentElement.append(notice);
+    return;
+  }
+  const [{extractArticle}, {articleRequest,previewFromAnalysis,isSupportedArticleUrl}, view] = modules;
   const root = document.createElement('div');
   root.id = '__newscheck_popup';
   const shadow = root.attachShadow({mode:'open'});
@@ -27,7 +61,7 @@
     root.style.top = Math.max(12,Math.min(y+16,innerHeight-root.getBoundingClientRect().height-12)) + 'px';
   }
   async function send(type,payload) {
-    const result = await chrome.runtime.sendMessage({type,payload});
+    const result = await message({type,payload});
     if(!result?.ok) throw new Error(result?.error || '출처 분석 요청에 실패했습니다.');
     return result.data;
   }
@@ -43,11 +77,11 @@
     timer=setTimeout(async () => {
       show(x,y,'<p>기사 본문과 출처를 수집하는 중입니다.</p>');
       try {
-        const cached=await chrome.runtime.sendMessage({type:'NEWSCHECK_GET_CACHED_ARTICLE',url:url.href});
+        const cached=await message({type:'NEWSCHECK_GET_CACHED_ARTICLE',url:url.href});
         if(run!==sequence)return;
         if(cached?.ok && cached.data?.analysis){show(x,y,view.renderPreview(previewFromAnalysis(cached.data.analysis)));return;}
         if(cached && !cached.ok)throw new Error(cached.error || '캐시된 분석을 조회하지 못했습니다.');
-        const response = await chrome.runtime.sendMessage({type:'NEWSCHECK_FETCH_ARTICLE',url:url.href});
+        const response = await message({type:'NEWSCHECK_FETCH_ARTICLE',url:url.href});
         if (run !== sequence) return;
         if(!response?.ok) throw new Error(response?.error || '기사 본문 확보 실패');
         const article = extractArticle(response.data.html,response.data.url);
@@ -55,7 +89,7 @@
         const preview = await send('NEWSCHECK_PREVIEW',articleRequest(article));
         if(run === sequence) show(x,y,view.renderPreview(preview));
       } catch(error) { if(run === sequence) show(x,y,'<p>' + view.esc(error.message) + '</p>'); }
-    },500);
+    },250);
   });
   document.addEventListener('mouseout', e => {
     if (popupMode === 'hover' && target && target.contains(e.target) && !target.contains(e.relatedTarget) && !root.contains(e.relatedTarget)) {

@@ -82,6 +82,20 @@ export function validateAnalysis(a) {
   for (const s of a.sources) if (!source(s)) throw new Error('출처 응답 형식 오류');
   for (const c of a.claims) if (!sourceStates.includes(c.source_status) || !decision(c.caution) || !Array.isArray(c.source_ids) || c.source_ids.some(id => !ids.has(id))) throw new Error('주장 출처 참조 오류');
   const claims=new Set(a.claims.map(c=>c.id));
+  const mentions=new Set(a.evidence_mentions.map(m=>m.id));
+  if(a.headline_explanation!==undefined){
+    const h=a.headline_explanation;
+    if(!h || typeof h.meaning!=='string' || Array.from(h.meaning).length>600 || !Array.isArray(h.reasons) || h.reasons.length>4)throw new Error('제목 설명 형식 오류');
+    for(const reason of h.reasons){
+      if(typeof reason.text!=='string' || !reason.text.trim() || Array.from(reason.text).length>240 || typeof reason.article_quote!=='string' || !reason.article_quote.trim())throw new Error('제목 이유 형식 오류');
+      for(const [key,allowed] of [['claim_ids',claims],['mention_ids',mentions],['source_ids',ids]])if(!Array.isArray(reason[key]) || reason[key].some(id=>!allowed.has(id)))throw new Error('제목 이유 참조 오류');
+    }
+  }
+  for(const item of a.context_timeline){
+    if(item.label!==undefined && (typeof item.label!=='string' || Array.from(item.label).length>24))throw new Error('배경 짧은 표현 형식 오류');
+    if(item.is_main_event!==undefined && typeof item.is_main_event!=='boolean')throw new Error('주요 사건 표시 형식 오류');
+  }
+  if(a.context_timeline.filter(t=>t.is_main_event).length>1)throw new Error('주요 사건은 하나만 표시합니다.');
   for(const d of [a.caution,...a.claims.map(c=>c.caution),...a.sources.map(s=>s.caution)])decisionRefs(d,ids,claims);
   rejectLegacy(a);
   return a;

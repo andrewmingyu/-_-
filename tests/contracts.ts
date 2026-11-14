@@ -1,4 +1,4 @@
-import type { SourceStatus, CautionStatus, Claim, ArticleAnalysis, AnalyzeRequest, ReportComparisonPoint } from '../newscheck 4/shared/types.js';
+import type { SourceStatus, CautionStatus, Claim, ArticleAnalysis, AnalyzeRequest, ReportComparisonPoint, HeadlineExplanation, TimelineItem } from '../newscheck 4/shared/types.js';
 const status: SourceStatus = 'original_found';
 const caution: CautionStatus = 'unknown';
 // @ts-expect-error old truth verdicts are not part of this API
@@ -21,3 +21,6 @@ const comparison: ReportComparisonPoint = {kind:'difference',aspect:'focus',arti
 // @ts-expect-error report comparisons are not support/contradiction verdicts
 const truthComparison: ReportComparisonPoint['kind'] = 'supports';
 void [comparison, truthComparison];
+const headline: HeadlineExplanation = {meaning:'제도 개편 검토를 다룹니다.',reasons:[{text:'연구원이 검토 계획을 발표했습니다.',article_quote:'연구원은 개편을 검토한다고 밝혔다.',claim_ids:['c1'],mention_ids:[],source_ids:[]}]};
+const timeline: TimelineItem = {date:'시점 미확인',label:'제도 개편 검토',is_main_event:true,description:'원문',article_quote:'원문'};
+void [headline,timeline];

@@ -6,6 +6,10 @@ import { chromium } from 'playwright-core';
 const root=path.resolve('dist/newscheck');
 const server=http.createServer(async(req,res)=>{
   const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
+  if(pathname==='/__popup-test.html') {
+    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});
+    res.end('<!doctype html><html><head><title>Popup test</title></head><body></body></html>');return;
+  }
   const file=path.resolve(root,'.'+pathname);
   if(!file.startsWith(root+path.sep)) {res.writeHead(403).end();return;}
   try {
@@ -39,6 +43,13 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await fs.mkdir('.tools',{recursive:true});
   await page.evaluate(()=>scrollTo(0,0));
+  assert.equal(await page.locator('#content > :first-child').getAttribute('class'),'card headline-explanation');
+  assert.equal(await page.locator('.headline-reasons > li').count(),2);
+  assert.equal(await page.locator('#summary-context .context-main').count(),1);
+  for(const label of await page.locator('#summary-context .context-step p').all()){
+    assert.ok(!(await label.innerText()).includes('…'));
+    assert.equal(await label.evaluate(el=>el.scrollHeight<=el.clientHeight),true);
+  }
   await page.screenshot({path:'.tools/panel.png',fullPage:true});
   // Compact overview: summary on the left, smaller metadata on the right.
   const narrowContext=await page.locator('[data-section="context"]').boundingBox();
@@ -76,17 +87,38 @@ try {
   await page.evaluate(()=>scrollTo(0,0));
   await page.screenshot({path:'.tools/panel-compact-320.png',fullPage:true});
   await page.setViewportSize({width:440,height:900});
+  await page.locator('[data-headline-toggle]').press('Enter');
+  await page.locator('[data-headline-jump="0"]').click();
+  assert.equal(await page.locator('#details-evidence').isVisible(),true);
+  assert.equal(await page.locator('#headline-details').isVisible(),true);
+  assert.ok((await page.evaluate(()=>document.activeElement.id)).startsWith('evidence-mention-'));
+  await page.waitForFunction(()=>{
+    const target=document.activeElement,rect=target.getBoundingClientRect();
+    return target.id.startsWith('evidence-') && rect.top>=65 && rect.top<=90;
+  });
+  await page.screenshot({path:'.tools/headline-evidence-jump.png'});
+  await page.locator('[data-headline-toggle]').click();
+  assert.equal(await page.locator('#details-evidence').isVisible(),true);
+  await page.locator('[data-toggle="evidence"]').click();
+  await page.evaluate(()=>scrollTo(0,0));
+  await page.emulateMedia({colorScheme:'dark'});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.screenshot({path:'.tools/headline-dark.png',fullPage:true});
+  await page.emulateMedia({colorScheme:'light'});
+  await page.locator('[data-toggle="cautions"]').click();
+  await page.locator('[data-section="cautions"]').scrollIntoViewIfNeeded();
+  await page.screenshot({path:'.tools/cautions-clean.png'});
   // Exercise content-script events with deterministic server responses, not real API calls.
   const fixture=JSON.parse(await fs.readFile(path.join(root,'data/demo.json'),'utf8'));
   const origin='http://127.0.0.1:'+server.address().port;
   const contentPage=await browser.newPage({viewport:{width:1000,height:900}});
-  await contentPage.goto(origin+'/sidepanel/sidepanel.html?demo');
+  await contentPage.goto(origin+'/__popup-test.html');
   const selectedText=fixture.claims[0].original_text;
   const articleHtml='<html><head><title>전기차 지원제도 검토에 관한 시연용 기사</title></head><body><a id="hover-link" href="https://news.naver.com/article/001/123456">시연용 기사 제목에 마우스 올리기</a><article><h1>전기차 지원제도 검토에 관한 시연용 기사</h1><div class="article-body"><p id="selected-para">'+selectedText+'</p><p>'+fixture.claims[1].original_text.repeat(8)+'</p></div></article></body></html>';
   await contentPage.setContent(articleHtml);
   await contentPage.evaluate(({origin,fixture,articleHtml})=>{
     window._messages=[];
-    window.chrome.runtime={getURL:p=>origin+'/'+p,sendMessage:async m=>{
+    window.chrome.runtime={id:'browser-test-extension',getURL:p=>origin+'/'+p,sendMessage:async m=>{
       window._messages.push(m);
       if(m.type==='NEWSCHECK_GET_CACHED_ARTICLE')return {ok:true,data:{payload:null}};
       if(m.type==='NEWSCHECK_FETCH_ARTICLE')return {ok:true,data:{html:articleHtml,url:m.url}};
@@ -100,9 +132,12 @@ try {
   contentPage.on('pageerror',e=>errors.push(e.message));
   await contentPage.addScriptTag({url:origin+'/content.js'});
   await contentPage.locator('#__newscheck_popup').waitFor({state:'attached'});
-  await contentPage.locator('#hover-link').hover();
-  await contentPage.waitForTimeout(100);
-  await contentPage.mouse.move(900,800);
+  await contentPage.evaluate(async()=>{
+    const link=document.querySelector('#hover-link');
+    link.dispatchEvent(new MouseEvent('mouseover',{bubbles:true,clientX:20,clientY:20}));
+    await new Promise(resolve=>setTimeout(resolve,50));
+    link.dispatchEvent(new MouseEvent('mouseout',{bubbles:true,relatedTarget:document.body}));
+  });
   await contentPage.waitForTimeout(650);
   assert.equal(await contentPage.evaluate(()=>window._messages.length),0);
   await contentPage.locator('#hover-link').hover();
@@ -136,8 +171,48 @@ try {
   assert.equal(request.payload.selected_text,selectedText);
   assert.ok(request.payload.page_text.includes(selectedText));
   assert.ok(request.payload.surrounding_text.includes(selectedText));
+  // Simulate the stale content script left behind by an extension reload.
+  // Chrome can throw synchronously, reject asynchronously, or remove runtime.id.
+  for (const failure of ['throw','reject','missing-id']) {
+    const stalePage=await browser.newPage({viewport:{width:1000,height:900}});
+    stalePage.on('pageerror',e=>errors.push(e.message));
+    await stalePage.goto(origin+'/__popup-test.html');
+    await stalePage.setContent(articleHtml);
+    await stalePage.evaluate(({origin})=>{
+      window._attempts=0;window.chrome.runtime={id:'stale-test',getURL:p=>origin+'/'+p,sendMessage:async()=>({ok:true,data:{}})};
+    },{origin});
+    await stalePage.addScriptTag({url:origin+'/content.js'});
+    await stalePage.locator('#__newscheck_popup').waitFor({state:'attached'});
+    await stalePage.evaluate(failure=>{
+      if(failure==='missing-id')delete window.chrome.runtime.id;
+      window.chrome.runtime.sendMessage=()=>{
+        window._attempts++;
+        if(failure==='throw')throw new Error('Extension context invalidated.');
+        return Promise.reject(new Error('Extension context invalidated.'));
+      };
+    },failure);
+    await stalePage.locator('#hover-link').hover();
+    await stalePage.waitForFunction(()=>document.querySelector('#__newscheck_popup').shadowRoot.querySelector('.body').textContent.includes('새로고침(F5)'));
+    assert.doesNotMatch(await stalePage.locator('#__newscheck_popup .body').innerText(),/Extension context invalidated/);
+    await stalePage.keyboard.press('Escape');
+    await stalePage.mouse.move(900,800);
+    await stalePage.locator('#hover-link').hover();
+    await stalePage.waitForFunction(()=>document.querySelector('#__newscheck_popup').shadowRoot.querySelector('.body').textContent.includes('새로고침(F5)'));
+    assert.equal(await stalePage.evaluate(()=>window._attempts),failure==='missing-id'?0:1,'A detached script must not retry extension/API calls');
+    await stalePage.close();
+  }
+  const startupPage=await browser.newPage();
+  startupPage.on('pageerror',e=>errors.push(e.message));
+  await startupPage.goto(origin+'/__popup-test.html');
+  await startupPage.evaluate(()=>{window.chrome.runtime={};});
+  await startupPage.addScriptTag({url:origin+'/content.js'});
+  await startupPage.getByRole('alert').waitFor();
+  assert.match(await startupPage.getByRole('alert').innerText(),/새로고침\(F5\)/);
+  await startupPage.getByRole('button',{name:'닫기',exact:true}).click();
+  assert.equal(await startupPage.getByRole('alert').count(),0);
+  await startupPage.close();
   assert.deepEqual(errors,[]);
-  console.log('Chrome headless: compact overview at 320/440/880px, two summary bullets, context boxes/arrows, one-line news rows, independent cards, Hover and selection passed.');
+  console.log('Chrome headless: panel layout, independent cards, Hover/selection, three stale-message cases and invalidated initialization passed.');
 }finally{
   await browser?.close();
   await new Promise(resolve=>server.close(resolve));

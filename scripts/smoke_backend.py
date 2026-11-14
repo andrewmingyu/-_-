@@ -26,12 +26,16 @@ try:
              'page_text':' '.join(c['original_text'] for c in fixture['claims'])}
     with httpx.Client(base_url=f'http://127.0.0.1:{port}') as client:
         assert client.get('/health').json()['mode']=='mock'
+        quick=client.post('/api/preview',json=payload);quick.raise_for_status()
+        assert quick.json()['search_status']=='not_run'
+        assert quick.json()['sources']==[] and quick.json()['major_evidence']==[]
         full=client.post('/api/articles/analyze',json=payload);full.raise_for_status()
         preview=client.post('/api/preview',json=payload);preview.raise_for_status()
         selected=client.post('/api/claims/check',json={**payload,'article_id':full.json()['article_id'],
             'selected_text':fixture['claims'][0]['original_text']});selected.raise_for_status()
         assert full.json()['is_demo'] and preview.json()['is_demo'] and selected.json()['is_demo']
         assert full.json()['article_id']==preview.json()['article_id']==selected.json()['article_id']
+        assert quick.json()['article_id']==full.json()['article_id']
         assert full.json()['sources']==selected.json()['sources']
     print('Real HTTP mock smoke: health, article, Hover preview and selected sentence passed.')
 finally:

@@ -1,4 +1,4 @@
-# API 명세 — source-tracing-v1 / 데이터 보완 1.3
+# API 명세 — source-tracing-v1 / 데이터 보완 1.7
 구현 기준: backend/app/main.py·models.py, newscheck 4/shared/types.ts.
 서버 자동 문서: http://127.0.0.1:8000/docs. 기계 판독 스키마: [api.schema.json](api.schema.json).
 모든 JSON은 UTF-8이고 Content-Type은 application/json이다.
@@ -14,7 +14,7 @@
 
 health 응답:
 ```json
-{"status":"ok","mode":"mock","schema_version":"source-tracing-v1","data_version":"source-tracing-v1.3"}
+{"status":"ok","mode":"mock","schema_version":"source-tracing-v1","data_version":"source-tracing-v1.7"}
 ```
 
 ## 요청
@@ -169,7 +169,7 @@ SelectionAnalysis는 article_id, selected_text, is_demo, claims[], sources[], ca
 서버 인증·사용자별 quota·자동 backoff·Retry-After에 따른 자동 대기/재시도는 아직 없다. Retry-After 값의 파싱·응답 전달은 구현되어 있다. 외부 공개 배포 전에 제한 정책을 별도 구현한다.
 
 ## 추가 필드와 기본값 (기존 경로 유지)
-- schema_version은 source-tracing-v1, data_version 기본값은 source-tracing-v1.3이다. 기존 클라이언트의 기본 필드를 유지하고 추가 항목은 기본값으로 생략 입력을 허용한다.
+- schema_version은 source-tracing-v1, data_version 기본값은 source-tracing-v1.7이다. 기존 클라이언트의 기본 필드를 유지하고 추가 항목은 기본값으로 생략 입력을 허용한다.
 - ArticleContext: cited_links의 각 항목은 url/text/article_quote이며 기사에서 수집한 링크다. 직접 링크라도 검색에서 확인되지 않은 새 출처로 저장하지 않는다. quotations는 원문에 있는 인용, body_truncated는 잘림 여부다.
 - Claim/Mention/TimelineItem.article_span: start/end/quote, 정규화 page_text의 Unicode 문자 기준, 서버 산출.
 - EventInfo: description/article_quote/time/location. quote가 본문에 있고 time/location이 그 인용에 포함돼야 한다.
@@ -190,3 +190,11 @@ SelectionAnalysis는 article_id, selected_text, is_demo, claims[], sources[], ca
 ```json
 {"detail":"공급자의 요청 한도에 도달했습니다.","error":{"code":"rate_limited","provider":"gemini","retry_after_seconds":12}}
 ```
+
+## 제목 설명·짧은 맥락 표현 (data_version 1.7)
+ArticleAnalysis.headline_explanation은 {meaning, reasons[]}이며 생략 시 빈 값으로 호환한다. meaning은 최대 600자, 이유는 최대 4개다. 각 이유는 text(독립적인 간결한 표현, 최대 240자), article_quote(실제 본문 연속 인용, 최대 2,000자), claim_ids, mention_ids, source_ids, article_span으로 구성한다.
+서버는 존재하지 않는 인용을 버리고 유효한 주장·근거 ID만 보존한다. source_ids는 연결된 실제 출처에서 서버가 채운다. 이유를 확인할 수 없으면 의미를 임의로 만들지 않고 빈 설명을 반환한다.
+TimelineItem에 label(최대 24자, 기본 빈 문자열), is_main_event(기본 false)를 추가하고 EventInfo에도 label을 추가한다. 날짜와 원문 description/article_quote는 보존한다. 서버는 유효한 사건 중 주요 사건 표시를 하나로 정리한다. API 경로·schema_version은 유지하며 응답·health·캐시의 data_version은 source-tracing-v1.7으로 통일한다.
+
+## 빠른 Preview (data_version 1.7)
+POST /api/preview는 완료된 전체 분석 캐시가 있으면 그 결과에서 응답을 만들고, 없으면 Gemini의 기사 추출까지만 수행한다. cold preview의 claims/major_evidence/sources는 빈 목록, search_status는 not_run이다. 이는 원출처 미발견이나 사실 확인이 아니다. 응답 필드는 호환성을 위해 유지한다. 이후 전체 분석과 같은 article_id/body_hash 및 추출 결과를 공유한다.

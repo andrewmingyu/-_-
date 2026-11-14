@@ -32,15 +32,56 @@ function sourceDetails(s, demo) {
     Object.entries(FACT_LABELS).map(([k,label]) => '<dt>' + label + '</dt><dd>' + esc(s.facts[k]?.excerpt || '확인하지 못함') + '</dd>').join('') +
     '</dl><p class="trace-note">출처 원문에 기재된 문구입니다. 전문성·이해관계 부재나 주장 진위를 독립적으로 보증하지 않습니다.</p><p>출처 분석 이유</p>' + decisionDetails(s.caution,[s],demo);
 }
+function cautionContent(a, detailed) {
+  const key = text => String(text).replace(/\s+/g,' ').trim().replace(/[.!。]+$/,'').trim();
+  const boilerplate = new Set([
+    '확보한 출처 정보에서 별도의 주의사항을 발견하지 못했습니다. 주장 진위의 판정은 아닙니다.',
+    '원본 자료 확인은 주장의 진실성을 입증하지 않습니다.',
+    '출처 확인은 주장의 진실성을 입증하지 않습니다.',
+    '주의사항의 존재나 부재는 주장 진위의 판정이 아닙니다.'
+  ].map(key));
+  const items = new Map(), missing = new Set(), missingSources = new Set(), missingClaims = new Set();
+  const errors = [...new Map((a.search_errors || []).map(text=>[key(text),text])).values()];
+  const errorKeys = new Set(errors.map(key));
+  for (const source of a.sources) {
+    if (!source.unknown_fields?.length) continue;
+    missingSources.add(source.id);
+    for (const field of source.unknown_fields) missing.add(FACT_LABELS[field] || field);
+  }
+  // Merge duplicate explanations without losing source/claim references or reasons lacking details.
+  for (const item of [...(a.caution.details || []), ...a.caution.reasons.map(reason=>({reason}))]) {
+    const text = String(item.reason).replace(/\s+/g,' ').trim(), normalized = key(text);
+    if (!normalized) continue;
+    if (text.startsWith('출처 속성을 확인하지 못했습니다:')) {
+      text.split(':').slice(1).join(':').split(',').map(s=>s.trim()).filter(Boolean).forEach(s=>missing.add(s));
+      (item.source_ids || []).forEach(id=>missingSources.add(id));
+      (item.claim_ids || []).forEach(id=>missingClaims.add(id));
+      continue;
+    }
+    // The status badge and error section already explain these boilerplate messages.
+    if (boilerplate.has(normalized)) continue;
+    if (errorKeys.has(normalized) || (errors.length && text === '원출처 검색 요청이 실패하여 분석이 불완전합니다.')) continue;
+    const row = items.get(normalized) || {text,source_ids:new Set(),claim_ids:new Set()};
+    (item.source_ids || []).forEach(id=>row.source_ids.add(id));
+    (item.claim_ids || []).forEach(id=>row.claim_ids.add(id));
+    items.set(normalized,row);
+  }
+  const refs = (sourceIds,claimIds) => {
+    const labels = a.claims.flatMap((c,i)=>claimIds.has(c.id)?['주장 '+(i+1)]:[]).map(esc);
+    labels.push(...a.sources.filter(s=>sourceIds.has(s.id)).map(s=>safeLink(s.url,s.title,a.is_demo)));
+    return labels.length?'<p class="muted">관련: '+labels.join(' · ')+'</p>':'';
+  };
+  const rows = [...items.values()];
+  const missingText = missing.size?'확인하지 못한 출처 정보: '+[...missing].join(', '):'';
+  if (!detailed) return list([...rows.map(r=>r.text),...errors,...(missingText?[missingText]:[])].slice(0,3));
+  const sections = [];
+  if (rows.length) sections.push('<div class="caution-group"><h3>주의가 필요한 내용</h3><ul>'+rows.map(r=>'<li class="caution-item">'+esc(r.text)+refs(r.source_ids,r.claim_ids)+'</li>').join('')+'</ul></div>');
+  if (missing.size) sections.push('<div class="caution-group"><h3>확인하지 못한 출처 정보</h3><p>'+esc([...missing].join(', '))+'</p>'+refs(missingSources,missingClaims)+'</div>');
+  if (errors.length) sections.push('<div class="caution-group"><h3>분석 중 발생한 문제</h3>'+list(errors)+'</div>');
+  return sections.join('');
+}
 function cautions(a, detailed) {
-  let rows = a.caution.reasons;
-  if (!detailed) rows = rows.slice(0, 3);
-  return pill(CAUTION_LABELS[a.caution.status], a.caution.status === 'caution') + (detailed?decisionDetails(a.caution,a.sources,a.is_demo):list(rows)) +
-    (detailed ? '<h3>출처가 불명확한 정보</h3>' + list(a.claims.filter(c => c.source_status !== 'original_found').map(c => c.original_text + ' — ' + SOURCE_LABELS[c.source_status])) +
-      '<h3>검증 가능성이 부족한 자료</h3>' + list(a.sources.filter(s => s.unknown_fields.length).map(s => s.title + ': ' + s.unknown_fields.join(', '))) +
-      '<h3>기자·전문가의 해석이나 예측</h3>' + list(a.claims.filter(c => ['opinion','interpretation','prediction'].includes(c.claim_type)).map(c => c.original_text)) +
-      '<h3>현재 확인하지 못한 정보</h3>' + list(a.search_errors.concat(a.sources.flatMap(s => s.unknown_fields.map(f => s.title + ': ' + f)))) +
-      '<h3>추가로 확인하면 좋은 자료</h3><p>원문 전체, 조사 방법, 최신 발행본, 작성자의 이해관계 및 자료 간 인용 관계를 확인해 주세요.</p>' : '') +
+  return pill(CAUTION_LABELS[a.caution.status], a.caution.status === 'caution') + cautionContent(a,detailed) +
     '<p class="trace-note">주의사항의 존재나 부재는 주장 진위의 판정이 아닙니다.</p>';
 }
 function reportComparison(report,detailed) {
@@ -60,10 +101,6 @@ function reportComparison(report,detailed) {
     '<div class="comparison-point"><h3>'+esc(point.kind==='common'?'공통으로 다룬 내용':'표현·강조가 다른 부분')+' · '+esc(REPORT_ASPECTS[point.aspect])+'</h3><div class="report-pair"><div><b>현재 기사</b><blockquote>'+esc(point.article_quote)+'</blockquote><button class="link-btn" data-quote="'+esc(point.article_quote)+'">본문에서 보기</button></div><div><b>비교 보도</b><blockquote>'+esc(point.related_quote)+'</blockquote></div></div></div>'
   ).join('')+'</div>';
 }
-const compactText = (value,limit=72) => {
-  const text=String(value || '').replace(/\s+/g,' ').trim();
-  return Array.from(text).length>limit?Array.from(text).slice(0,limit).join('')+'…':text;
-};
 function summaryLines(value) {
   const text=String(value || '').trim();
   const lines=text.split(/\n+/).map(line=>line.replace(/^\s*[-•]\s+/, '').trim()).filter(Boolean);
@@ -74,14 +111,42 @@ function summaryLines(value) {
 function compactDate(value) {
   return value?String(value).replace('T',' ').replace(/^(\d{4})-(\d{2})-(\d{2})/,'$1.$2.$3').slice(0,16):'미확인';
 }
+export function reasonPhrase(value) {
+  return String(value || '').trim().replace(/[.!?。]+$/,'')
+    .replace(/밝혔(?:다|습니다)$/,'밝힘')
+    .replace(/말했(?:다|습니다)$/,'언급')
+    .replace(/전했(?:다|습니다)$/,'전달')
+    .replace(/알렸(?:다|습니다)$/,'알림')
+    .replace(/(?:하지 못했다|하지 못했습니다)$/,'하지 못함')
+    .replace(/하지 못합니다$/,'하지 못함')
+    .replace(/(?:않았다|않았습니다)$/,'않음')
+    .replace(/않는다$/,'않음')
+    .replace(/(?:중이다|중입니다)$/,'중')
+    .replace(/(?:예정이다|예정입니다)$/,'예정')
+    .replace(/(?:아니다|아닙니다)$/,'아님')
+    .replace(/(?:없다|없습니다)$/,'없음')
+    .replace(/(?:있다|있습니다)$/,'있음')
+    .replace(/(?:되었다|됐다|됐습니다)$/,'됨')
+    .replace(/(?:하였다|했다|했습니다|합니다|한다)$/,'').trim();
+}
 function contextFlow(a) {
   const nodes=a.context_timeline.length?a.context_timeline.slice(0,4):a.event?.description?[{
-    date:a.event.time || a.article.event_time || '시점 미확인',description:a.event.description,article_quote:a.event.article_quote || a.event.description,
+    date:a.event.time || a.article.event_time || '시점 미확인',label:a.event.label || '주요 사건',is_main_event:true,description:a.event.description,article_quote:a.event.article_quote || a.event.description,
   }]:[];
   if(!nodes.length)return '<p class="muted">기사에서 확인할 수 있는 배경 정보가 없습니다.</p>';
   return '<div class="context-flow" role="list" aria-label="기사에서 확인한 흐름" tabindex="0">'+nodes.map((node,index)=>
-    (index?'<span class="context-arrow" aria-hidden="true">→</span>':'')+'<div class="context-step" role="listitem"><span class="context-date">'+esc(node.date)+'</span><p title="'+esc(node.description)+'">'+esc(compactText(node.description))+'</p></div>'
+    (index?'<span class="context-arrow" aria-hidden="true">→</span>':'')+'<div class="context-step'+(node.is_main_event?' context-main':'')+'" role="listitem"'+(node.is_main_event?' aria-label="주요 사건"':'')+'><span class="context-date">'+esc(node.date)+'</span>'+(node.is_main_event?'<span class="context-main-label">주요 사건</span>':'')+'<p title="'+esc(node.description)+'">'+esc(node.label || (node.is_main_event?'주요 사건':'배경 정보'))+'</p></div>'
   ).join('')+'</div>';
+}
+function headlineCard(a,expanded) {
+  const h=a.headline_explanation, reasons=h?.reasons || [];
+  const available=Boolean(h?.meaning && reasons.length);
+  const message=a.ui_state==='loading'?'기사 본문에서 제목의 의미와 이유를 읽는 중입니다.':a.ui_state==='error'?'제목 설명을 불러오지 못했습니다. 다시 분석해 주세요.':'제목 설명이 아직 없습니다. 다시 분석해 주세요.';
+  const open=expanded.has('headline');
+  return '<section class="card headline-explanation" aria-labelledby="headline-explanation-title"><div class="headline-heading"><h2 id="headline-explanation-title">제목의 의미</h2>'+(a.is_demo?'<span class="trace-badge">시연용</span>':'')+
+    (available?'<button class="btn" data-headline-toggle aria-label="제목의 의미와 이유 '+(open?'접기':'자세히 보기')+'" aria-expanded="'+open+'" aria-controls="headline-details">'+(open?'접기 ∧':'자세히 보기 ›')+'</button>':'')+'</div>'+
+    (available?'<p class="headline-meaning">'+esc(h.meaning)+'</p><h3 class="headline-reasons-title">이유</h3><ul class="headline-reasons">'+reasons.map(r=>'<li>'+esc(reasonPhrase(r.text))+'</li>').join('')+'</ul>'+
+    '<div id="headline-details"'+(open?'':' hidden')+'>'+reasons.map((r,i)=>'<div class="headline-reason-detail"><h3>이유 '+(i+1)+'</h3><p>'+esc(reasonPhrase(r.text))+'</p><blockquote>'+esc(r.article_quote)+'</blockquote><button class="link-btn" data-headline-jump="'+i+'">'+(r.mention_ids.length || r.source_ids.length?'이 이유의 근거 보기 →':'근거 확인 현황 보기 →')+'</button></div>').join('')+'</div>':'<p class="muted">'+esc(message)+'</p>')+'</section>';
 }
 function relatedList(items,demo,detailed=false) {
   if(!items.length)return '<p class="muted">관련 기사 없음</p>';
@@ -110,7 +175,7 @@ export function sectionData(a) {
     {id:'context',title:'배경 및 맥락',summary:timeline,details:timeline+event+timelineDetails + '<p class="trace-note">기사에서 확인한 흐름이며 화살표가 인과관계를 입증하는 것은 아닙니다.</p>'},
     {id:'metadata',title:'기사 기본 정보',summary:compactMetadata,details:metadata + '<dl><dt>수정일</dt><dd>' + esc(article.updated_at || '미확인') + '</dd><dt>원문</dt><dd>' + safeLink(article.url,'기사 원문',a.is_demo) + '</dd><dt>기자 정보</dt><dd>' + (article.author_profile_url ? safeLink(article.author_profile_url,'공개 프로필',a.is_demo) : '확인 가능한 공개 프로필 없음') + '</dd></dl>'},
     {id:'claims',title:'기사의 주장',summary:claimSummary,details:a.claims.map(c => '<div class="source-row">' + pill(TYPE_LABELS[c.claim_type]) + '<blockquote>' + esc(c.original_text) + '</blockquote><p>발언자: ' + esc(c.speaker || '미확인') + '</p><button class="link-btn" data-quote="' + esc(c.original_text) + '">본문에서 보기</button></div>').join('') || '<p>추출된 주장 없음</p>'},
-    {id:'evidence',title:'내용의 근거',summary:mentions + (!a.sources.length ? '<p>원출처 자료를 아직 확보하지 못했습니다.</p>' : '') + (a.sources.some(s => s.discovery === 'external_found') ? '<p class="muted">외부에서 추가 발견한 자료는 자세히 보기에서 구분합니다.</p>' : ''),details:a.evidence_mentions.map(m=>'<div class="source-row"><p>기사에서 제시한 근거: '+esc(m.article_quote)+'</p><p>자료 종류: '+esc(kindLabel(m.source_kind))+'</p><button class="link-btn" data-quote="'+esc(m.article_quote)+'">본문에서 보기</button></div>').join('') + a.sources.map(s => sourceDetails(s,a.is_demo)).join('')},
+    {id:'evidence',title:'내용의 근거',summary:mentions + (!a.sources.length ? '<p>원출처 자료를 아직 확보하지 못했습니다.</p>' : '') + (a.sources.some(s => s.discovery === 'external_found') ? '<p class="muted">외부에서 추가 발견한 자료는 자세히 보기에서 구분합니다.</p>' : ''),details:a.evidence_mentions.map(m=>'<div class="source-row" id="evidence-mention-'+esc(m.id)+'"><p>기사에서 제시한 근거: '+esc(m.article_quote)+'</p><p>자료 종류: '+esc(kindLabel(m.source_kind))+'</p><button class="link-btn" data-quote="'+esc(m.article_quote)+'">본문에서 보기</button></div>').join('') + a.sources.map(s => '<div id="evidence-source-'+esc(s.id)+'">'+sourceDetails(s,a.is_demo)+'</div>').join('')},
     {id:'cautions',title:'주의할 것',summary:cautions(a,false),details:cautions(a,true)},
     {id:'related',title:'비슷한 주제의 기사',summary:relatedList(related.slice(0,5),a.is_demo),details:relatedList(related,a.is_demo,true)}
   ];
@@ -139,7 +204,7 @@ function traceStrip(a) {
   const cells = t.cells.map(c => '<span class="trace-cell trace-' + c.key + '" title="' + esc(c.label) + '"></span>').join('');
   const legend = t.legend.map(l => '<li><i class="trace-dot trace-' + l.key + '" aria-hidden="true"></i>' + esc(l.label) + ' ' + l.count + '</li>').join('');
   const aria = t.legend.map(l => l.label + ' ' + l.count).join(', ');
-  return '<section class="card trace-strip" aria-label="근거 확인 현황"><div class="trace-top"><span class="trace-kicker">근거 확인 현황</span>' +
+  return '<section class="card trace-strip" id="trace-overview" tabindex="-1" aria-label="근거 확인 현황"><div class="trace-top"><span class="trace-kicker">근거 확인 현황</span>' +
     (t.caution ? '<span class="trace-badge caution">주의할 점 ' + (t.cautionCount ? t.cautionCount + '건' : '있음') + '</span>' : '') +
     (t.partial ? '<span class="trace-badge">일부 단계 미완료</span>' : '') + '</div>' +
     '<p class="trace-headline">' + esc(t.headline) + '</p>' +
@@ -150,20 +215,50 @@ function traceStrip(a) {
 export function renderAnalysis(container, a, expanded = new Set()) {
   const sections=sectionData(a);
   const summary=a.ui_state?'<p>'+esc(a.one_line_summary)+'</p>':'<ul class="summary-list">'+summaryLines(a.one_line_summary).map(line=>'<li>'+esc(line)+'</li>').join('')+'</ul>';
-  container.innerHTML = (a.is_demo ? '<div class="demo-banner" role="status">시연용 예시 · 실제 기사나 실제 출처 분석 결과가 아닙니다.</div>' : '') + credStrip(a) + traceStrip(a) +
+  container.innerHTML = headlineCard(a,expanded) + (a.is_demo ? '<div class="demo-banner" role="status">시연용 예시 · 실제 기사나 실제 출처 분석 결과가 아닙니다.</div>' : '') + credStrip(a) + traceStrip(a) +
     '<div class="overview-grid"><div class="analysis-summary"><span>'+(a.ui_state==='loading'?'분석 중':a.ui_state==='error'?'분석 요청 실패':a.analysis_status==='partial'?'부분 분석':'출처 분석 완료')+'</span><h2>한 줄 요약</h2>'+summary+'</div>'+sectionMarkup(a,sections.find(s=>s.id==='metadata'),expanded)+'</div>'+errorList(a.pipeline_errors)+
     '<div class="analysis-grid">'+sections.filter(s=>s.id!=='metadata').map(s=>sectionMarkup(a,s,expanded)).join('')+'</div>'+
     '<div class="card"><h2>제목과 본문 표현의 차이</h2><p>' + esc(a.headline_difference) + '</p><p class="trace-note">' + esc(a.final_comment) + '</p><p class="muted">분석 시각: ' + esc(a.analyzed_at) + '</p></div>';
-  container.onclick = e => {
-    const button = e.target.closest('[data-toggle]');
-    if (!button) return;
-    const id = button.dataset.toggle;
-    if (expanded.has(id)) expanded.delete(id); else expanded.add(id);
+  const setSectionOpen = (id,open) => {
+    const button=container.querySelector('[data-toggle="'+id+'"]');
+    if(open)expanded.add(id);else expanded.delete(id);
     button.setAttribute('aria-expanded', String(expanded.has(id)));
     button.textContent = expanded.has(id) ? '접기 ∧' : '자세히 보기 ›';
     button.setAttribute('aria-label',sections.find(s=>s.id===id).title+' '+(expanded.has(id)?'접기':'자세히 보기'));
     container.querySelector('#details-' + id).hidden = !expanded.has(id);
     container.querySelector('#summary-' + id).hidden = expanded.has(id);
+  };
+  container.onclick = e => {
+    const toggle=e.target.closest('[data-headline-toggle]');
+    if(toggle){
+      if(expanded.has('headline'))expanded.delete('headline');else expanded.add('headline');
+      toggle.setAttribute('aria-expanded',String(expanded.has('headline')));
+      toggle.setAttribute('aria-label','제목의 의미와 이유 '+(expanded.has('headline')?'접기':'자세히 보기'));
+      toggle.textContent=expanded.has('headline')?'접기 ∧':'자세히 보기 ›';
+      container.querySelector('#headline-details').hidden=!expanded.has('headline');
+      return;
+    }
+    const jump=e.target.closest('[data-headline-jump]');
+    if(jump){
+      const reason=a.headline_explanation?.reasons[Number(jump.dataset.headlineJump)];
+      if(!reason)return;
+      const mid=reason.mention_ids.find(id=>a.evidence_mentions.some(m=>m.id===id));
+      const sid=reason.source_ids.find(id=>a.sources.some(s=>s.id===id));
+      let target=container.querySelector('#trace-overview');
+      if(mid || sid){
+        setSectionOpen('evidence',true);
+        target=container.ownerDocument.getElementById(mid?'evidence-mention-'+mid:'evidence-source-'+sid);
+      }
+      if(target){
+        target.setAttribute('tabindex','-1');target.classList.add('jump-target');
+        target.focus({preventScroll:true});
+        target.scrollIntoView?.({behavior:'smooth',block:'start'});
+        setTimeout(()=>target.classList.remove('jump-target'),1600);
+      }
+      return;
+    }
+    const button = e.target.closest('[data-toggle]');
+    if(button)setSectionOpen(button.dataset.toggle,!expanded.has(button.dataset.toggle));
   };
 }
 export function renderAnalysisState(container,article,status,message,expanded=new Set()) {
@@ -172,8 +267,9 @@ export function renderAnalysisState(container,article,status,message,expanded=ne
   if(status==='error')container.insertAdjacentHTML('afterbegin','<button class="btn" data-retry>다시 시도</button>');
 }
 export function renderPreview(p) {
-  return (p.is_demo ? '<p class="demo-banner">시연용 예시 · 실제 AI 분석이 아닙니다.</p>' : '') + '<h3>핵심 요약</h3>'+list(summaryLines(p.summary))+'<h3>주요 주장</h3>'+list((p.claims||[]).map(c=>c.claim_text))+'<h3>주요 근거</h3>' + list(p.major_evidence.map(m => m.description)) +
-    p.sources.slice(0,2).map(s => sourceSummary(s,p.is_demo)).join('') + '<h3>제목·본문 표현 차이</h3><p>' + esc(p.headline_difference) + '</p><h3>주의사항</h3><p>' + esc(p.one_line_caution) + '</p>'+errorList(p.pipeline_errors);
+  return (p.is_demo ? '<p class="demo-banner">시연용 예시 · 실제 AI 분석이 아닙니다.</p>' : '') + '<h3>핵심 요약</h3>'+list(summaryLines(p.summary))+
+    (p.headline_difference?'<h3>제목·본문 표현 차이</h3><p>'+esc(p.headline_difference)+'</p>':'')+
+    '<p class="trace-note">출처와 자세한 근거는 오른쪽 분석 패널에서 확인하세요.</p>';
 }
 export function renderSelection(r) {
   return (r.is_demo ? '<p class="demo-banner">시연용 예시</p>' : '') + '<h3>문장 유형과 출처</h3>'+(r.analysis_id?'<p class="trace-note">'+(r.matched_claim_ids?.length?'기사의 핵심 주장 분석을 재사용했습니다.':'선택 문장을 별도로 분석했습니다.')+'</p>':'') + r.claims.map(c => '<p>' + pill(TYPE_LABELS[c.claim_type]) + ' ' + pill(SOURCE_LABELS[c.source_status]) + '</p><blockquote>' + esc(c.original_text) + '</blockquote>').join('') +

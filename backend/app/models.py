@@ -43,6 +43,7 @@ class ArticleContext(Model):
 
 
 class EventInfo(Model):
+    label: str = Field(default='', max_length=24)
     description: str | None = None
     article_quote: str | None = None
     time: str | None = None
@@ -138,10 +139,26 @@ class Source(Model):
 
 class TimelineItem(Model):
     date: str
+    label: str = Field(default='', max_length=24)
+    is_main_event: bool = False
     description: str
     article_quote: str
     article_span: TextSpan | None = None
     source_ids: list[str] = Field(default_factory=list)
+
+
+class HeadlineReason(Model):
+    text: str = Field(min_length=1, max_length=240)
+    article_quote: str = Field(min_length=1, max_length=2000)
+    claim_ids: list[str] = Field(default_factory=list)
+    mention_ids: list[str] = Field(default_factory=list)
+    source_ids: list[str] = Field(default_factory=list)
+    article_span: TextSpan | None = None
+
+
+class HeadlineExplanation(Model):
+    meaning: str = Field(default='', max_length=600)
+    reasons: list[HeadlineReason] = Field(default_factory=list, max_length=4)
 
 
 class ReportComparisonPoint(Model):
@@ -185,13 +202,14 @@ class RelatedArticle(Model):
 
 class ArticleAnalysis(Model):
     schema_version: Literal['source-tracing-v1'] = 'source-tracing-v1'
-    data_version: str = 'source-tracing-v1.3'
+    data_version: str = 'source-tracing-v1.7'
     article_id: str
     body_hash: str
     analysis_status: Literal['partial', 'complete']
     is_demo: bool = False
     article: Article
     one_line_summary: str
+    headline_explanation: HeadlineExplanation = Field(default_factory=HeadlineExplanation)
     context_timeline: list[TimelineItem] = Field(default_factory=list)
     claims: list[Claim] = Field(default_factory=list)
     evidence_mentions: list[Mention] = Field(default_factory=list)
@@ -221,6 +239,9 @@ class ArticleAnalysis(Model):
             raise ValueError('Unknown source mention')
         if any(not set(t.source_ids) <= source_ids for t in self.context_timeline):
             raise ValueError('Unknown timeline source')
+        for reason in self.headline_explanation.reasons:
+            if not set(reason.claim_ids) <= claim_ids or not set(reason.mention_ids) <= mention_ids or not set(reason.source_ids) <= source_ids:
+                raise ValueError('Unknown headline reason reference')
         report_ids = [r.id for r in self.related_articles if r.id]
         if len(set(report_ids)) != len(report_ids):
             raise ValueError('Duplicate related report ID')
@@ -269,12 +290,13 @@ class Preview(Model):
     search_status: SearchStatus
     claims: list[Claim] = Field(default_factory=list)
     body_hash: str = ''
-    data_version: str = 'source-tracing-v1.3'
+    data_version: str = 'source-tracing-v1.7'
     pipeline_errors: list[PipelineError] = Field(default_factory=list)
 
 
 class Extraction(Model):
     summary: str
+    headline_explanation: HeadlineExplanation = Field(default_factory=HeadlineExplanation)
     claims: list[Claim] = Field(max_length=3)
     evidence_mentions: list[Mention]
     context_timeline: list[TimelineItem] = Field(default_factory=list)

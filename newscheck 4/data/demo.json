@@ -20,12 +20,16 @@
     {
       "date": "시점 미확인",
       "description": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다.",
-      "article_quote": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다."
+      "article_quote": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다.",
+      "label": "지원제도 개편 검토",
+      "is_main_event": true
     },
     {
       "date": "시점 미확인",
       "description": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다.",
-      "article_quote": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다."
+      "article_quote": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다.",
+      "label": "구매 시점 변화 전망",
+      "is_main_event": false
     }
   ],
   "claims": [
@@ -212,5 +216,34 @@
   "search_status": "completed",
   "search_errors": [],
   "analyzed_at": "2026-11-11T00:00:00Z",
-  "data_version": "source-tracing-v1.3"
+  "data_version": "source-tracing-v1.7",
+  "headline_explanation": {
+    "meaning": "지원제도 개편을 검토하는 상황이며, 구매 시점 등에 영향을 줄 수 있다는 의미입니다.",
+    "reasons": [
+      {
+        "text": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝힘",
+        "article_quote": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다.",
+        "claim_ids": [
+          "claim_1"
+        ],
+        "mention_ids": [
+          "mention_1"
+        ],
+        "source_ids": [
+          "src_demo"
+        ]
+      },
+      {
+        "text": "관계자는 구매 시점에 변화가 있을 수 있다고 언급",
+        "article_quote": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다.",
+        "claim_ids": [
+          "claim_2"
+        ],
+        "mention_ids": [
+          "mention_2"
+        ],
+        "source_ids": []
+      }
+    ]
+  }
 }
