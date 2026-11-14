@@ -80,6 +80,8 @@ class Mention(Model):
     claim_ids: list[str] = Field(default_factory=list)
     description: str
     article_quote: str
+    # 외국어 기사일 때만 채우는 한국어 번역 (원문 인용은 article_quote에 그대로 둠)
+    translation: str | None = Field(default=None, max_length=600)
     source_label: str | None = None
     document_title: str | None = None
     source_kind: str = 'unknown'
@@ -91,6 +93,8 @@ class Claim(Model):
     id: str
     original_text: str
     claim_text: str
+    # 외국어 기사일 때만 채우는 한국어 번역 (원문 인용은 original_text에 그대로 둠)
+    translation: str | None = Field(default=None, max_length=600)
     claim_type: ClaimType
     speaker: str | None = None
     mention_ids: list[str] = Field(default_factory=list)
@@ -205,7 +209,7 @@ class RelatedArticle(Model):
 
 class ArticleAnalysis(Model):
     schema_version: Literal['source-tracing-v1'] = 'source-tracing-v1'
-    data_version: str = 'source-tracing-v1.7'
+    data_version: str = 'source-tracing-v1.8'
     article_id: str
     body_hash: str
     analysis_status: Literal['partial', 'complete']
@@ -293,7 +297,7 @@ class Preview(Model):
     search_status: SearchStatus
     claims: list[Claim] = Field(default_factory=list)
     body_hash: str = ''
-    data_version: str = 'source-tracing-v1.7'
+    data_version: str = 'source-tracing-v1.8'
     pipeline_errors: list[PipelineError] = Field(default_factory=list)
 
 

@@ -25,6 +25,20 @@ class EnglishQuery(BaseModel):
     quotes_en: list[str] = []
 
 
+
+def korean_translation(translation, original):
+    """외국어 원문의 한국어 번역만 남긴다. 원문이 이미 한국어이거나 번역이 비었거나 한국어가 아니면 None."""
+    text = ' '.join(str(translation or '').split())
+    if not text or text == ' '.join(str(original or '').split()):
+        return None
+    hangul = lambda value: sum('가' <= ch <= '힣' for ch in value)
+    letters = lambda value: sum(ch.isalpha() for ch in value) or 1
+    if hangul(original or '') / letters(original or '') > 0.3:
+        return None
+    if hangul(text) / letters(text) < 0.3:
+        return None
+    return text[:600]
+
 class ArticleInputError(ValueError):
     """Invalid user article input, distinct from provider/schema failures."""
 
@@ -233,7 +247,7 @@ class Analyzer:
             metadata['url'] = normalize_url(request.url)
         return body_hash(json.dumps([normalize_url(request.url), body_hash(request.page_text),
             request.title, metadata, clean_context(request.article_context,request.page_text).model_dump(mode='json'),
-            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.7', focus], ensure_ascii=False))
+            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.8', focus], ensure_ascii=False))
 
     def lookup(self, article_id, url=None):
         url = normalize_url(url) if url is not None else None
@@ -582,6 +596,7 @@ class Analyzer:
                 continue
             seen.add(c.id)
             c.claim_text = c.original_text
+            c.translation = korean_translation(c.translation, c.original_text)
             c.speaker = c.speaker if c.speaker and c.speaker in text else None
             c.source_ids, c.mention_ids, c.source_status = [], [], 'unknown'
             c.caution = Decision(reasons=['출처 분석 전입니다.'])
@@ -595,6 +610,7 @@ class Analyzer:
             seen.add(m.id)
             m.claim_ids = [i for i in m.claim_ids if i in ids]
             m.description = m.article_quote
+            m.translation = korean_translation(m.translation, m.article_quote)
             m.source_label = m.source_label if m.source_label and m.source_label in m.article_quote else None
             m.document_title = m.document_title if m.document_title and m.document_title in text else None
             m.anonymous = bool(re.search(r'익명|관계자|소식통', m.article_quote))

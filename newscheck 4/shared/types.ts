@@ -10,8 +10,8 @@ export interface EventInfo { label?:string; description:string|null; article_quo
 export interface PipelineError { phase:string; code:string; message:string; provider:string|null; retry_after_seconds:number|null }
 export interface SectionState { status:'ready'|'empty'|'partial'|'error'; message:string|null }
 export interface Article { url:string; title:string; publisher:string|null; author:string|null; published_at:string|null; updated_at:string|null; event_time:string|null; event_location:string|null; author_profile_url:string|null }
-export interface Mention { id:string; claim_ids:string[]; description:string; article_quote:string; source_label:string|null; document_title:string|null; source_kind:string; anonymous:boolean; article_span?:TextSpan|null }
-export interface Claim { id:string; original_text:string; claim_text:string; claim_type:ClaimType; speaker:string|null; mention_ids:string[]; source_ids:string[]; source_status:SourceStatus; caution:Decision; article_span?:TextSpan|null }
+export interface Mention { id:string; claim_ids:string[]; description:string; article_quote:string; translation?:string|null; source_label:string|null; document_title:string|null; source_kind:string; anonymous:boolean; article_span?:TextSpan|null }
+export interface Claim { id:string; original_text:string; claim_text:string; translation?:string|null; claim_type:ClaimType; speaker:string|null; mention_ids:string[]; source_ids:string[]; source_status:SourceStatus; caution:Decision; article_span?:TextSpan|null }
 export interface Observation { excerpt:string }
 export type FactKey = 'identity'|'authorship'|'originality'|'expertise'|'information_access'|'date_context'|'public_access'|'methodology'|'interests'|'independence';
 export type SourceFacts = Record<Exclude<FactKey,'authorship'>,Observation|null> & {authorship?:Observation|null};

@@ -382,6 +382,7 @@ button:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-
 
 /* 주장 번호 표시 (주장 1, 주장 1의 근거) */
 .trace-badge.claim-no { background:var(--accent-soft); color:var(--accent-text); margin-right:4px; }
+<<<<<<< HEAD
 .odiff-point { margin-top:10px; border-top:1px solid var(--line); }
 .odiff-point h3 { font-size:12.5px; margin:8px 0 6px; }
 .odiff-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -390,3 +391,9 @@ button:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-
 .odiff-pair blockquote { margin:6px 0 0; padding:0; border:0; font-size:12.5px; }
 .odiff-why { margin-top:8px; font-size:12.5px; line-height:1.55; }
 .odiff-why b { color:var(--sub); }
+=======
+
+/* 외국어 기사의 AI 번역 */
+.translation { margin:6px 0; font-size:13px; line-height:1.6; }
+.translation .trace-badge { margin-right:4px; }
+>>>>>>> origin/main
