@@ -1,0 +1,81 @@
+(async () => {
+  const [{extractArticle}, {articleRequest,previewFromAnalysis}, view] = await Promise.all([
+    import(chrome.runtime.getURL('lib/extract.js')),
+    import(chrome.runtime.getURL('shared/article.js')),
+    import(chrome.runtime.getURL('shared/view.js'))
+  ]);
+  const root = document.createElement('div');
+  root.id = '__newscheck_popup';
+  const shadow = root.attachShadow({mode:'open'});
+  shadow.innerHTML = '<style>:host{all:initial;position:fixed;z-index:2147483647;display:none;width:min(410px,calc(100vw - 24px));font:14px/1.6 "Malgun Gothic",sans-serif;color:#222538}*{box-sizing:border-box}.box{max-height:70vh;overflow:auto;background:#fff;border:1px solid #dedbf4;border-radius:16px;padding:18px;box-shadow:0 12px 40px #21263c30}h3{font-size:15px;margin:12px 0 5px}p{margin:5px 0}ul{padding-left:20px}a{color:#5141bf}button{font:inherit;cursor:pointer;border:1px solid #d8d5eb;border-radius:7px;background:#f5f3ff;padding:6px 10px;color:#45339e}.close{float:right}.source-row{border-top:1px solid #eae8f4;padding:9px 0}.trace-badge{display:inline-block;background:#f0f1f7;padding:2px 6px;border-radius:5px;margin:3px}.caution{background:#fff0d8;color:#8a4900}.trace-note,.muted{color:#62677b;font-size:12px}.demo-banner{background:#fff0d8;padding:8px}blockquote{margin:8px 0;padding-left:10px;border-left:2px solid #bcb5e4}</style><div class="box"><button class="close" aria-label="닫기">×</button><div class="body"></div></div>';
+  document.documentElement.append(root);
+  const body = shadow.querySelector('.body');
+  let timer, hideTimer, sequence = 0, target = null;
+  const hide = () => { sequence++; root.style.display = 'none'; target = null; clearTimeout(timer); };
+  shadow.querySelector('.close').onclick = hide;
+  root.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+  root.addEventListener('mouseleave', () => { hideTimer = setTimeout(hide,200); });
+  function show(x,y,html) {
+    body.innerHTML = html;
+    root.style.display = 'block';
+    root.style.left = Math.max(12,Math.min(x+12,innerWidth- Math.min(410,innerWidth-24)-12)) + 'px';
+    root.style.top = Math.max(12,Math.min(y+16,innerHeight-root.getBoundingClientRect().height-12)) + 'px';
+  }
+  async function send(type,payload) {
+    const result = await chrome.runtime.sendMessage({type,payload});
+    if(!result?.ok) throw new Error(result?.error || '출처 분석 요청에 실패했습니다.');
+    return result.data;
+  }
+  document.addEventListener('mouseover', e => {
+    const anchor = e.target.closest?.('a[href]');
+    if (!anchor || root.contains(anchor)) return;
+    let url; try { url = new URL(anchor.href); } catch { return; }
+    if (!['news.naver.com','n.news.naver.com'].includes(url.hostname) || !/\/(?:mnews\/)?article\//.test(url.pathname)) return;
+    if (target === anchor) { clearTimeout(hideTimer); return; }
+    hide(); target = anchor;
+    const run = ++sequence, x=e.clientX,y=e.clientY;
+    timer=setTimeout(async () => {
+      show(x,y,'<p>기사 본문과 출처를 수집하는 중입니다.</p>');
+      try {
+        const cached=await chrome.runtime.sendMessage({type:'NEWSCHECK_GET_CACHED_ARTICLE',url:url.href});
+        if(run!==sequence)return;
+        if(cached?.ok && cached.data?.analysis){show(x,y,view.renderPreview(previewFromAnalysis(cached.data.analysis)));return;}
+        if(cached && !cached.ok)throw new Error(cached.error || '캐시된 분석을 조회하지 못했습니다.');
+        const response = await chrome.runtime.sendMessage({type:'NEWSCHECK_FETCH_ARTICLE',url:url.href});
+        if (run !== sequence) return;
+        if(!response?.ok) throw new Error(response?.error || '기사 본문 확보 실패');
+        const article = extractArticle(response.data.html,response.data.url);
+        if(!article.isArticle) throw new Error('본문을 확보하지 못했습니다. 제목만으로 요약하지 않습니다.');
+        const preview = await send('NEWSCHECK_PREVIEW',articleRequest(article));
+        if(run === sequence) show(x,y,view.renderPreview(preview));
+      } catch(error) { if(run === sequence) show(x,y,'<p>' + view.esc(error.message) + '</p>'); }
+    },500);
+  });
+  document.addEventListener('mouseout', e => {
+    if (target && target.contains(e.target) && !target.contains(e.relatedTarget) && !root.contains(e.relatedTarget)) {
+      clearTimeout(timer); hideTimer = setTimeout(hide,180);
+    }
+  });
+  document.addEventListener('mouseup', e => {
+    if(e.composedPath().includes(root)) return;
+    const selection = getSelection();
+    const text = selection?.toString().replace(/\s+/g,' ').trim();
+    if(!text || text.length < 2 || text.length > 3000) return;
+    const article = extractArticle();
+    if(!article.isArticle) return;
+    const payload = articleRequest(article);
+    const index = payload.page_text.indexOf(text);
+    if(index < 0) return;
+    hide(); const run = ++sequence, x=e.clientX,y=e.clientY;
+    show(x,y,'<button id="trace-selection">문장 유형·출처 확인</button><p class="trace-note">선택 문장과 기사 본문을 설정된 분석 서버로 전송합니다.</p>');
+    shadow.querySelector('#trace-selection').onclick = async () => {
+      show(x,y,'<p>선택 문장의 출처를 분석하는 중입니다.</p>');
+      try {
+        const result = await send('NEWSCHECK_SELECTION',{...payload,selected_text:text,
+          surrounding_text:payload.page_text.slice(Math.max(0,index-250),index+text.length+250)});
+        if(run === sequence) show(x,y,view.renderSelection(result));
+      } catch(error) { if(run === sequence) show(x,y,'<p>' + view.esc(error.message) + '</p>'); }
+    };
+  });
+  document.addEventListener('keydown',e => { if(e.key === 'Escape') hide(); });
+})();

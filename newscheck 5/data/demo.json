@@ -1,0 +1,216 @@
+{
+  "schema_version": "source-tracing-v1",
+  "article_id": "source_trace_demo_v1",
+  "body_hash": "demo_only",
+  "analysis_status": "partial",
+  "is_demo": true,
+  "article": {
+    "url": "https://news.example/article/1",
+    "title": "전기차 지원제도 개편 검토…세부 기준은 미정",
+    "publisher": "가상신문",
+    "author": "가상기자",
+    "published_at": "2026-11-09T10:24:00+09:00",
+    "updated_at": null,
+    "event_time": null,
+    "event_location": null,
+    "author_profile_url": null
+  },
+  "one_line_summary": "가상정책연구소가 지원제도 개편을 검토하고 있습니다.\n익명 발언과 미래 예측은 원출처를 추가 확인해야 합니다.",
+  "context_timeline": [
+    {
+      "date": "시점 미확인",
+      "description": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다.",
+      "article_quote": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다."
+    },
+    {
+      "date": "시점 미확인",
+      "description": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다.",
+      "article_quote": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다."
+    }
+  ],
+  "claims": [
+    {
+      "id": "claim_1",
+      "original_text": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다.",
+      "claim_text": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다.",
+      "claim_type": "quotation",
+      "speaker": "가상정책연구소",
+      "mention_ids": [
+        "mention_1"
+      ],
+      "source_ids": [
+        "src_demo"
+      ],
+      "source_status": "original_found",
+      "caution": {
+        "status": "unknown",
+        "reasons": [
+          "원본 자료를 확인한 예시이지만, 전문성과 이해관계 등의 정보는 확인하지 못했습니다."
+        ]
+      }
+    },
+    {
+      "id": "claim_2",
+      "original_text": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다.",
+      "claim_text": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다.",
+      "claim_type": "prediction",
+      "speaker": "관계자",
+      "mention_ids": [
+        "mention_2"
+      ],
+      "source_ids": [],
+      "source_status": "source_not_found",
+      "caution": {
+        "status": "caution",
+        "reasons": [
+          "익명 관계자 발언으로 원출처를 찾지 못했습니다.",
+          "미래 예측을 포함한 문장입니다. 실제 발생 여부를 판단하지 않습니다."
+        ]
+      }
+    }
+  ],
+  "evidence_mentions": [
+    {
+      "id": "mention_1",
+      "claim_ids": [
+        "claim_1"
+      ],
+      "description": "가상정책연구소의 시연용 검토 자료",
+      "article_quote": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다.",
+      "source_label": "가상정책연구소",
+      "document_title": "시연용 정책 검토 자료",
+      "source_kind": "공식 발표",
+      "anonymous": false
+    },
+    {
+      "id": "mention_2",
+      "claim_ids": [
+        "claim_2"
+      ],
+      "description": "익명 관계자 발언",
+      "article_quote": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다.",
+      "source_label": "관계자",
+      "document_title": null,
+      "source_kind": "인터뷰",
+      "anonymous": true
+    }
+  ],
+  "sources": [
+    {
+      "id": "src_demo",
+      "url": "https://sources.example/demo-document",
+      "title": "시연용 정책 검토 자료",
+      "publisher": "가상정책연구소",
+      "published_at": "2026-11-08",
+      "retrieved_at": "2026-11-11T00:00:00Z",
+      "discovery": "article_cited",
+      "mention_ids": [
+        "mention_1"
+      ],
+      "source_kind": "공식 발표",
+      "original_status": "original_found",
+      "facts": {
+        "identity": {
+          "excerpt": "가상정책연구소"
+        },
+        "originality": {
+          "excerpt": "본 문서는 가상정책연구소가 직접 발간한 시연용 정책 검토 자료입니다."
+        },
+        "expertise": null,
+        "information_access": null,
+        "date_context": null,
+        "public_access": {
+          "excerpt": "시연용 공개 문서입니다."
+        },
+        "methodology": null,
+        "interests": null,
+        "independence": null
+      },
+      "unknown_fields": [
+        "전문성",
+        "정보 접근 경로",
+        "발행 시점 맥락",
+        "조사 방법",
+        "이해관계",
+        "자료 독립성"
+      ],
+      "summary": "가상정책연구소가 직접 작성한 자료라는 표기를 확인한 시연입니다. 다른 출처 속성은 미확인입니다.",
+      "caution": {
+        "status": "unknown",
+        "reasons": [
+          "자료의 전문성과 정보 접근 경로, 이해관계 등을 확인하지 못했습니다."
+        ]
+      }
+    }
+  ],
+  "caution": {
+    "status": "caution",
+    "reasons": [
+      "익명 발언과 미래 예측이 포함되어 있습니다. 원출처를 추가 확인해 주세요.",
+      "원본 자료 확인은 주장의 진실성을 입증하지 않습니다."
+    ]
+  },
+  "related_articles": [
+    {
+      "url": "https://other.example/demo-news",
+      "title": "지원제도 검토 관련 보도 — 시연용",
+      "publisher": "가상방송",
+      "published_at": "2026-11-09",
+      "differences_summary": "공통으로 다룬 항목: 보도 주제 / 표현·강조 차이: 강조점",
+      "independence": "독립적인 자료에 기반했는지 확인하지 못했습니다.",
+      "id": "report_demo",
+      "topic": "지원제도 검토",
+      "summary": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다. 이 가상 보도는 검토 일정과 후속 안내를 중심으로 전한다.",
+      "comparison_basis": "search_snippet",
+      "comparison_status": "compared",
+      "comparison_points": [
+        {
+          "kind": "common",
+          "aspect": "topic",
+          "article_quote": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다.",
+          "related_quote": "가상정책연구소는 지원제도 개편을 검토하고 있다고 밝혔다."
+        },
+        {
+          "kind": "difference",
+          "aspect": "focus",
+          "article_quote": "관계자는 구매 시점에 변화가 있을 수 있다고 말했다.",
+          "related_quote": "이 가상 보도는 검토 일정과 후속 안내를 중심으로 전한다."
+        }
+      ]
+    },
+    {
+      "url": "https://report2.example/demo-news",
+      "title": "지원제도 검토, 소비자 안내 과제는 — 시연용",
+      "publisher": "가상경제",
+      "published_at": "2026-11-09",
+      "differences_summary": "내용 비교 전",
+      "independence": "독립적인 자료에 기반했는지 확인하지 못했습니다.",
+      "id": "report_demo_2",
+      "topic": "지원제도 검토",
+      "summary": "추가 비교 전인 가상 기사입니다.",
+      "comparison_basis": "search_snippet",
+      "comparison_status": "not_compared",
+      "comparison_points": []
+    },
+    {
+      "url": "https://report3.example/demo-news",
+      "title": "지원제도 후속 발표 일정 살펴보기 — 시연용",
+      "publisher": "가상통신",
+      "published_at": "2026-11-09",
+      "differences_summary": "내용 비교 전",
+      "independence": "독립적인 자료에 기반했는지 확인하지 못했습니다.",
+      "id": "report_demo_3",
+      "topic": "지원제도 검토",
+      "summary": "추가 비교 전인 가상 기사입니다.",
+      "comparison_basis": "search_snippet",
+      "comparison_status": "not_compared",
+      "comparison_points": []
+    }
+  ],
+  "headline_difference": "제목과 본문 모두 검토 단계라고 표현하는 시연입니다. 사실 여부의 판정은 제공하지 않습니다.",
+  "final_comment": "근거의 원출처와 확인하지 못한 속성을 정리한 시연용 예시입니다.",
+  "search_status": "completed",
+  "search_errors": [],
+  "analyzed_at": "2026-11-11T00:00:00Z",
+  "data_version": "source-tracing-v1.3"
+}

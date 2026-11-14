@@ -1,0 +1,278 @@
+{
+  "_설명": "언론사 도메인별 정보. leaning(성향)은 AI가 판단하지 않고, 팀이 공개 연구·조사 자료를 근거로 직접 입력합니다. 근거 없이 입력하지 마세요. 예: {\"leaning\": \"진보\", \"leaningSource\": \"○○연구소 2025 언론 신뢰도 조사\", \"leaningSourceUrl\": \"https://...\"}",
+  "outlets": {
+    "khan.co.kr": {
+      "name": "경향신문",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "hani.co.kr": {
+      "name": "한겨레",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "chosun.com": {
+      "name": "조선일보",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "joongang.co.kr": {
+      "name": "중앙일보",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "donga.com": {
+      "name": "동아일보",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "hankookilbo.com": {
+      "name": "한국일보",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "kmib.co.kr": {
+      "name": "국민일보",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "seoul.co.kr": {
+      "name": "서울신문",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "segye.com": {
+      "name": "세계일보",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "munhwa.com": {
+      "name": "문화일보",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "yna.co.kr": {
+      "name": "연합뉴스",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "newsis.com": {
+      "name": "뉴시스",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "news1.kr": {
+      "name": "뉴스1",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "mk.co.kr": {
+      "name": "매일경제",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "hankyung.com": {
+      "name": "한국경제",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "sedaily.com": {
+      "name": "서울경제",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "edaily.co.kr": {
+      "name": "이데일리",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "mt.co.kr": {
+      "name": "머니투데이",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "asiae.co.kr": {
+      "name": "아시아경제",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "heraldcorp.com": {
+      "name": "헤럴드경제",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "fnnews.com": {
+      "name": "파이낸셜뉴스",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "kbs.co.kr": {
+      "name": "KBS",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "imbc.com": {
+      "name": "MBC",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "sbs.co.kr": {
+      "name": "SBS",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "jtbc.co.kr": {
+      "name": "JTBC",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "ytn.co.kr": {
+      "name": "YTN",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "tvchosun.com": {
+      "name": "TV조선",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "ichannela.com": {
+      "name": "채널A",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "mbn.co.kr": {
+      "name": "MBN",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "ohmynews.com": {
+      "name": "오마이뉴스",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "pressian.com": {
+      "name": "프레시안",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "nocutnews.co.kr": {
+      "name": "노컷뉴스",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "journalist.or.kr": {
+      "name": "한국기자협회",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "mediatoday.co.kr": {
+      "name": "미디어오늘",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "sisain.co.kr": {
+      "name": "시사IN",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "etnews.com": {
+      "name": "전자신문",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "zdnet.co.kr": {
+      "name": "지디넷코리아",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "dt.co.kr": {
+      "name": "디지털타임스",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "biz.chosun.com": {
+      "name": "조선비즈",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    }
+  }
+}
