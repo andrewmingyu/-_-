@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+from pydantic import BaseModel
 from .models import (Article, ArticleAnalysis, Claim, Decision, Extraction, Source, RelatedArticle,
                      SourceFacts, SourceReviews, AnalyzeRequest, SelectionAnalysis, TextSpan,
                      CautionDetail, ArticleContext, EventInfo, PipelineError, SectionState, ReportComparisons,
@@ -15,6 +16,13 @@ from .models import (Article, ArticleAnalysis, Claim, Decision, Extraction, Sour
 from .prompts import EXTRACT, TRACE, COMPARE_REPORTS
 from .report_comparison import comparison_material, apply_comparisons
 from .errors import ProviderError
+from .outlets import domains_for
+
+
+class EnglishQuery(BaseModel):
+    query: str
+    document_title_en: str | None = None
+    quotes_en: list[str] = []
 
 
 
@@ -80,6 +88,66 @@ def combine_decisions(decisions):
 FACT_LABELS = {'identity': '작성기관', 'authorship': '작성자', 'originality': '원자료 관계', 'expertise': '전문 분야',
     'information_access': '자료 접근 경로', 'date_context': '작성 시점', 'public_access': '공개 범위',
     'methodology': '조사 방법', 'interests': '이해관계', 'independence': '자료 독립성'}
+
+
+_TITLE_STOP = frozenset('the and for with from that this about into over of in on at to a an is are was by'.split())
+
+
+def title_matches(titles, page_title):
+    """영어 원제 추정값의 핵심 단어(3개 이상)가 검색된 페이지 제목에 거의 다 들어 있을 때만 같은 자료로 본다.
+    추정값은 번역이라 어순·관사가 달라질 수 있어 연속 문자열이 아니라 단어 포함률로 비교한다. 본문은 보지 않는다."""
+    words = lambda x: [w for w in re.sub(r'[^a-z0-9가-힣]+', ' ', str(x or '').casefold()).split() if w not in _TITLE_STOP]
+    page = set(words(page_title))
+    for title in titles:
+        ws = set(words(title))
+        if len(ws) >= 3 and len(ws & page) / len(ws) >= 0.85:
+            return True
+    return False
+
+
+def english_relevant(row, query_words):
+    """영어 뉴스 검색 결과가 영어 검색어와 실제로 겹치는지 본다(핵심 단어 3개 이상, 40% 이상). 관련 없는 기사를 거른다."""
+    if not query_words:
+        return True
+    text = f"{row.get('title') or ''} {str(row.get('content') or '')[:400]}".casefold()
+    hit = query_words & set(re.findall(r'[a-z0-9]{3,}', text))
+    return len(hit) >= 3 and len(hit) / len(query_words) >= 0.4
+
+
+def title_overlap(row, title):
+    """후속 보도 검색 결과가 기사 제목의 핵심 단어를 하나라도 담고 있는지 본다."""
+    tokens = {w for w in re.findall(r'[0-9A-Za-z가-힣]{2,}', str(title or '').casefold())}
+    text = f"{row.get('title') or ''} {str(row.get('content') or '')[:300]}".casefold()
+    return any(w in text for w in tokens)
+
+
+def text_coverage(quotes, content):
+    """기사가 인용한 핵심 문장의 영어 번역 단어가 확보한 영어 본문에 얼마나 들어 있는지(0~1, 단어 6개 미만이면 0)."""
+    words = lambda x: {w for w in re.sub(r'[^a-z0-9]+', ' ', str(x or '').casefold()).split() if len(w) >= 4 and w not in _TITLE_STOP}
+    body = words(content)
+    best = 0.0
+    for quote in quotes:
+        ws = words(quote)
+        if len(ws) >= 6:
+            best = max(best, len(ws & body) / len(ws))
+    return best
+
+
+def text_matches(quotes, content):
+    return text_coverage(quotes, content) >= 0.7
+
+
+def best_original(candidates, outlet_domains, titles, quotes):
+    """매체 공식 도메인 후보 중 제목·본문이 가장 잘 맞는 하나만 고른다(같은 매체의 다른 기사가 함께 연결되지 않게)."""
+    best, best_score = None, 0.0
+    for c in candidates:
+        host = (urlsplit(c['url']).hostname or '').lower()
+        if not any(host == d or host.endswith('.' + d) for d in outlet_domains):
+            continue
+        score = 2.0 if title_matches(titles, c['title']) else text_coverage(quotes, c['content'])
+        if score >= 0.7 and score > best_score:
+            best, best_score = c['id'], score
+    return best
 
 
 def source_decision(status, facts, kind, published_at=None, reference_date=None):
@@ -263,6 +331,25 @@ class Analyzer:
             one_line_caution='기사 본문만 요약한 미리보기입니다. 출처 확인은 상세 분석에서 진행합니다.',
             search_status='not_run',body_hash=body_hash(request.page_text))
 
+    async def _english_query(self, request, mentions):
+        """국내 기사가 외국 출처를 다룰 때를 위해 영어 검색어를 한 번 만든다. 실패하면 None."""
+        if not (request.title or '').strip() or request.title.isascii():
+            return None, [], []
+        try:
+            out = await self.llm.generate('한국어 기사가 외국 언론·기관의 보도나 보고서를 인용하고 있다. 기사 제목, 출처명, 인용 문장을 보고 '
+                '그 원문 보도의 영어 제목이나 핵심 문장을 추정해 영어 뉴스 검색어(고유명사 영문 표기 포함, 15단어 이하)로 만들어라. '
+                '본문에 따옴표로 인용된 제목(예: \'21세기 정치적 도박\')이 있으면 그 영어 원제를 우선 사용하고 document_title_en에도 적어라. 또 외국 매체의 보도 내용으로 인용된 핵심 문장 1~3개를 원문이 쓰였을 영어로 옮겨 quotes_en에 적어라. 사실을 추가하지 마라.',
+                {'title': request.title, 'sources': [m.source_label for m in mentions if m.source_label][:3],
+                 'quoted_titles': [m.document_title for m in mentions if m.document_title][:3],
+                 'quotes': [m.article_quote[:200] for m in mentions][:3]}, EnglishQuery)
+        except Exception:
+            return None, [], []
+        text = getattr(out, 'query', None)
+        title_en = getattr(out, 'document_title_en', None)
+        titles = [title_en.strip()] if isinstance(title_en, str) and title_en.strip() else []
+        quotes = [q for q in (getattr(out, 'quotes_en', None) or []) if isinstance(q, str) and q.strip()][:3]
+        return (' '.join(text.split())[:150] if isinstance(text, str) and text.strip() else None), titles, quotes
+
     async def _run(self, request, key, focus=None):
         extracted = await self._extract(request,key,focus)
         if focus:
@@ -293,17 +380,28 @@ class Analyzer:
         queries = queries[:3]
         # 관련 기사 검색은 원출처 검색과 서로 기다릴 필요가 없으므로 먼저 시작해 둔다.
         related_task = asyncio.ensure_future(self.search.search(request.title[:200], topic='news')) if request.title and not focus else None
+        # 기사가 특정 언론사·기관을 언급할 때만 그 도메인 안에서 추가 검색한다(크레딧 절약).
+        mention_text = ' '.join(filter(None, [f'{m.source_label or ""} {m.document_title or ""} {m.article_quote}' for m in mentions]))
+        named_domains = domains_for(f'{request.title or ""} {mention_text} {request.page_text[:3000]}')
+        english, english_titles, english_quotes = await self._english_query(request, mentions) if os.getenv('ENGLISH_SEARCH', 'on').strip().lower() not in ('off', 'false', '0') else (None, [], [])
+        if english and english not in queries:
+            queries.append(english)
+        # 외신 보도도 관련 기사 후보에 들어오도록 같은 영어 검색어로 뉴스 검색을 한 번 더 한다.
+        related_en_task = asyncio.ensure_future(self.search.search(english, topic='news')) if english and related_task else None
+        # 이 기사에 대한 정정·반박·논란을 다룬 후속 보도도 관련 기사 후보에 넣는다(끄려면 FOLLOWUP_SEARCH=off).
+        related_follow_task = asyncio.ensure_future(self.search.search(request.title[:120] + ' 논란 정정 반박', topic='news')) \
+            if related_task and os.getenv('FOLLOWUP_SEARCH', 'on').strip().lower() not in ('off', 'false', '0') else None
         async def fetch(query):
             try:
                 rows = await self.search.search(query)
             except Exception as exc:
                 return None, exc
             extra = getattr(self.search, 'search_in', None)
-            if extra:
+            if extra and named_domains:
                 try:
-                    rows = list(rows) + list(await extra(query))
+                    rows = list(rows) + list(await extra(query, named_domains))
                 except Exception:
-                    pass  # 유튜브·네이버 보조 검색 실패는 원출처 검색 상태에 영향을 주지 않는다.
+                    pass  # 보조 검색 실패는 원출처 검색 상태에 영향을 주지 않는다.
             return rows, None
         # 검색어마다 순서대로 기다리지 않고 한꺼번에 실행한다(결과는 검색어 순서대로 처리).
         fetched = await asyncio.gather(*(fetch(q) for q in queries))
@@ -364,7 +462,7 @@ class Analyzer:
                 record_error(exc,'source_review','gemini')
                 search_errors.append('출처 속성 정리를 완료하지 못했습니다. 원본 여부를 보류합니다.')
         sources = self.build_sources(mentions, list(candidates.values()), reviews,
-            request.metadata.published_at if request.metadata else None, request.article_context)
+            request.metadata.published_at if request.metadata else None, request.article_context, english_titles, english_quotes, named_domains)
         for timeline in extracted.context_timeline:
             timeline.source_ids = [s.id for s in sources if any(m.id in s.mention_ids and m.article_quote in timeline.article_quote for m in mentions)]
         for claim in claims:
@@ -393,7 +491,22 @@ class Analyzer:
         related, report_materials = [], {}
         if request.title and not focus:
             try:
-                rows = await related_task
+                rows = list(await related_task)
+                extra_rows = []
+                en_words = {w for w in re.findall(r'[a-z0-9]{3,}', ' '.join([english or ''] + list(english_titles)).casefold())
+                            if w not in _TITLE_STOP}
+                for kind, task in (('en', related_en_task), ('follow', related_follow_task)):
+                    if task:
+                        try:
+                            got = list(await task)
+                            # 영어·후속 보도 검색은 엉뚱한 기사가 섞이기 쉬워 관련도가 낮은 결과를 걸러낸다.
+                            got = [r for r in got if (english_relevant(r, en_words) if kind == 'en' else title_overlap(r, request.title))]
+                            extra_rows.append(got)
+                        except Exception:
+                            pass  # 영어·후속 보도 검색 실패는 한국어 관련 기사 결과에 영향을 주지 않는다.
+                # 한국어·영어·후속 보도를 번갈아 배치해, 상위 5건·비교 3건 안에 외신과 후속 보도가 들어가게 한다.
+                lists = [rows] + extra_rows
+                rows = [r for i in range(max(len(x) for x in lists)) for x in lists for r in x[i:i+1]]
                 hosts = set()
                 for row in rows:
                     try:
@@ -418,12 +531,33 @@ class Analyzer:
             except Exception as exc:
                 record_error(exc,'related_search','tavily')
                 search_errors.append('관련 기사 검색이 실패했습니다. 원출처 검색 상태와는 별개입니다.')
+        # 매체 공식 도메인에서 확인된 원문은 관련 기사 맨 앞에 두어, 기사가 원문을 어떻게 옮겼는지 비교하게 한다.
+        by_id = {c['id']: c for c in candidates.values()}
+        original_ids = set()
+        # 이 기사에서 매체 도메인·제목/인용 일치로 확인한 후보만 대상으로 한다(LLM이 original_found로 본 모든 출처가 아님).
+        verified_id = best_original(list(candidates.values()), named_domains, english_titles, english_quotes)
+        for s in sources:
+            cand = by_id.get(s.id)
+            if verified_id and s.id == verified_id and s.original_status == 'original_found' and s.mention_ids and cand and cand['content'] \
+                    and str(s.url) not in {str(r.url) for r in related}:
+                row = {'url': cand['url'], 'title': cand['title'], 'content': cand['snippet'], 'raw_content': cand['content']}
+                report_id = 'report_' + body_hash(cand['url'])[:16]
+                material, basis = comparison_material(row)
+                material = cand['content'][:16000]  # 원문은 결론 부분까지 비교하도록 더 길게 쓴다.
+                report_materials[report_id] = material
+                related.insert(0, RelatedArticle(id=report_id, url=cand['url'], title=cand['title'] or cand['url'],
+                    publisher=publisher_name(cand['url']) or urlsplit(cand['url']).hostname, published_at=cand['published_at'],
+                    topic=request.title, summary=cand['snippet'][:400] or None, comparison_basis=basis,
+                    differences_summary='원문으로 확인된 자료(기사 본문 비교 전).'))
+                original_ids.add(report_id)
+                del related[5:]
+                break
         if related:
             comparison_reports = related[:3]
             try:
                 comparisons = await self.llm.generate(COMPARE_REPORTS, {
                     'body': request.page_text,
-                    'reports': [{'id': r.id, 'title': r.title, 'basis': r.comparison_basis,
+                    'reports': [{'id': r.id, 'title': r.title, 'basis': r.comparison_basis, 'is_original': r.id in original_ids,
                                  'text': report_materials[r.id]} for r in comparison_reports],
                 }, ReportComparisons)
                 apply_comparisons(comparison_reports, report_materials, request.page_text, comparisons)
@@ -517,7 +651,7 @@ class Analyzer:
         return extracted
 
     @staticmethod
-    def build_sources(mentions, candidates, reviews, reference_date=None, article_context=None):
+    def build_sources(mentions, candidates, reviews, reference_date=None, article_context=None, english_titles=(), english_quotes=(), outlet_domains=()):
         allowed_mentions = {m.id: m for m in mentions}
         # Duplicate reviews are not allowed to overwrite an earlier observation.
         by_id = {}
@@ -525,11 +659,20 @@ class Analyzer:
             if r.source_id not in by_id:
                 by_id[r.source_id] = r
         sources = []
+        best_id = best_original(candidates, outlet_domains, english_titles, english_quotes)
         for c in candidates:
             review = by_id.get(c['id'])
             facts = SourceFacts()
             mids = [m.id for m in mentions if any(normalize_url(link.url)==c['url'] and link.text in m.article_quote for link in (article_context.cited_links if article_context else []))]
             status = 'unknown'
+            # 기사가 인용한 외신 원문: 기사에 이름이 나온 매체의 공식 도메인이고, 페이지 제목이 영어 원제와 맞거나
+            # 본문이 기사 인용 문장(영어 번역)과 맞으면 연결한다.
+            verified = False
+            if c['id'] == best_id:
+                named = [m for m in mentions if any(urlsplit(c['url']).hostname.lower().endswith(d)
+                         for d in domains_for(f'{m.source_label or ""} {m.document_title or ""} {m.article_quote}')) or m.document_title]
+                mids += [m.id for m in (named or mentions)]
+                verified = True
             if review:
                 facts = SourceFacts(**{k: v for k, v in review.facts.model_dump().items()
                     if v and v['excerpt'] in c['content']})
@@ -550,6 +693,8 @@ class Analyzer:
                     status = review.original_status
                     if status == 'original_found' and not facts.identity:
                         status = 'unknown'
+            if verified and status == 'unknown':
+                status = 'original_found'  # 매체 공식 도메인 + 제목 일치로 확인한 경우. 속성 미확인 항목은 아래에서 그대로 표시한다.
             decision, missing = source_decision(status, facts, next((allowed_mentions[i].source_kind for i in mids), 'unknown'), c['published_at'], reference_date)
             decision.details = [CautionDetail(reason=r,source_ids=[c['id']]) for r in decision.reasons]
             sources.append(Source(id=c['id'], url=c['url'], title=c['title'],

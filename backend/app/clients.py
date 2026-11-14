@@ -202,9 +202,9 @@ class Tavily:
         self.log_search('뉴스' if topic == 'news' else '일반', query, depth, rows)
         return rows
 
-    async def search_in(self, query):
-        """유튜브·네이버 등 지정한 사이트 안에서만 한 번 더 검색한다. 도메인이 없으면 빈 목록."""
-        domains = self.extra_domains()
+    async def search_in(self, query, domains=None):
+        """지정한 사이트 안에서만 한 번 더 검색한다. domains가 없으면 SEARCH_EXTRA_DOMAINS를 쓴다."""
+        domains = list(domains) if domains else self.extra_domains()
         if not domains:
             return []
         rows = await self._request('search', {'query': query, 'topic': 'general', 'max_results': 5,

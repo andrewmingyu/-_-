@@ -61,9 +61,12 @@ const bigrams = text => {
 function crossFactor(a) {
   const compared = (a.related_articles || []).filter(r => r.comparison_status === 'compared');
   if (!compared.length) return null;
-  let common = 0; let diff = 0;
-  compared.forEach(r => (r.comparison_points || []).forEach(p => { if (p.kind === 'common') common++; else diff++; }));
-  const ratio = common + diff ? common / (common + diff) : 0;
+  let common = 0; let diff = 0; let weighted = 0;
+  // '누가 말했는가'(귀속) 차이는 의미를 바꾸기 쉬워 3배로 센다. 가중치는 초기값이다.
+  compared.forEach(r => (r.comparison_points || []).forEach(p => {
+    if (p.kind === 'common') common++; else { diff++; weighted += p.aspect === 'attribution' ? 3 : 1; }
+  }));
+  const ratio = common + weighted ? common / (common + weighted) : 0;
   const coverage = Math.min(1, compared.length / 2);
   return { score: clamp(100 * (0.7 * ratio + 0.3 * coverage)), detail: '비교한 보도 ' + compared.length + '건 · 공통 ' + common + ' · 차이 ' + diff };
 }

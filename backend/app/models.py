@@ -170,6 +170,9 @@ class ReportComparisonPoint(Model):
     aspect: Literal['topic', 'event', 'actors', 'time', 'figures', 'attribution', 'focus', 'context']
     article_quote: str = Field(min_length=8, max_length=600)
     related_quote: str = Field(min_length=8, max_length=600)
+    # 원문이 외국어일 때 related_quote의 한국어 번역과, 기사에서 달라진 점(빠졌거나 바뀐 내용)을 한 문장으로 설명한다. 판정 문구는 쓰지 않는다.
+    related_quote_ko: str | None = Field(default=None, max_length=700)
+    explanation: str | None = Field(default=None, max_length=300)
 
 
 class ReportComparison(Model):

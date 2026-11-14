@@ -45,3 +45,9 @@ test('canonical URL and bounded input cache reuse input while expiring stale art
   cache.put({url:'https://example.org/2',page_text:'두번째'},'second');cache.put({url:'https://example.org/3',page_text:'세번째'},'third');
   assert.equal(cache.get(url),null);clock=11;assert.equal(cache.get('https://example.org/3'),null);
 });
+test('a visible 입력 date overrides a different metadata date but a body event date is never used',()=>{
+  const html='<html><head><meta property="article:published_time" content="2020-07-20T04:39:00+09:00"></head><body><h1>BBC 문대통령 잘되면 노벨상 안되면 벼랑끝</h1><p>손진석 기자 입력 2018.03.12. 03:10</p><article><p>'+('2026년 10월 1일 서울에서 행사가 열렸다. 다음 일정은 확인되지 않았다. ').repeat(8)+'</p></article></body></html>';
+  const article=extract(html,'https://www.chosun.com/site/data/html_dir/2018/03/12/x.html');
+  assert.equal(article.published,'2018-03-12T03:10:00+09:00');
+  assert.equal(extract('<h1>사건 날짜만 있는 시연용 기사 제목</h1><article><p>'+('2026년 10월 1일 서울에서 행사가 열렸다. ').repeat(8)+'</p></article>').published,'');
+});
