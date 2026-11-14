@@ -19,7 +19,16 @@ OUTLETS = {
     '통계청': ['kostat.go.kr', 'kosis.kr'], '국가데이터처': ['kostat.go.kr', 'kosis.kr'],
     '금융감독원': ['fss.or.kr', 'dart.fss.or.kr'], '한국은행': ['bok.or.kr'], '질병관리청': ['kdca.go.kr'],
     '식품의약품안전처': ['mfds.go.kr'], '식약처': ['mfds.go.kr'],
+    '조선일보': ['chosun.com'], '중앙일보': ['joongang.co.kr'], '동아일보': ['donga.com'], '한겨레': ['hani.co.kr'],
+    '경향신문': ['khan.co.kr'], '한국일보': ['hankookilbo.com'], '매일경제': ['mk.co.kr'], '한국경제': ['hankyung.com'],
+    '서울경제': ['sedaily.com'], '오마이뉴스': ['ohmynews.com'], '뉴시스': ['newsis.com'], '뉴스1': ['news1.kr'],
+    'ytn': ['ytn.co.kr'], 'jtbc': ['jtbc.co.kr'], '연합뉴스tv': ['yonhapnewstv.co.kr'], '세계일보': ['segye.com'],
+    '국민일보': ['kmib.co.kr'], '문화일보': ['munhwa.com'], '서울신문': ['seoul.co.kr'], '시사in': ['sisain.co.kr'],
+    '프레시안': ['pressian.com'], '코리아헤럴드': ['koreaherald.com'], '코리아타임스': ['koreatimes.co.kr'],
 }
+
+# 언론 보도를 비평·검증하는 매체. 기사가 언급한 외신·기관을 다룰 때 이 도메인 안에서만 "이 기사에 대한 지적"을 따로 찾는다.
+CRITIC_DOMAINS = ['ohmynews.com', 'mediatoday.co.kr', 'pressian.com', 'newstapa.org', 'journalist.or.kr', 'sisain.co.kr']
 
 
 @lru_cache
