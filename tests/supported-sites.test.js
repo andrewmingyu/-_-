@@ -26,3 +26,11 @@ test('Hover rejects list pages, other hosts, credentials and local network desti
     'javascript:alert(1)', 'not a URL',
   ]) assert.equal(isSupportedArticleUrl(url), false, url);
 });
+
+test('Side panel skips search results, video, chat and other non-article pages', async () => {
+  const {isNonArticlePage} = await import('../newscheck 4/shared/article.js');
+  for (const url of ['https://search.naver.com/search.naver?query=wsj', 'https://www.google.com/search?q=a', 'https://claude.ai/chat/1', 'https://www.youtube.com/watch?v=abc', 'https://github.com/a/b'])
+    assert.equal(isNonArticlePage(url), true, url);
+  for (const url of ['https://n.news.naver.com/article/011/0004682182', 'https://magazine.hankyung.com/business/article/202611146356b', 'https://www.chosun.com/x', 'not a URL'])
+    assert.equal(isNonArticlePage(url), false, url);
+});

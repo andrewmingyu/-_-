@@ -130,9 +130,12 @@ export function extractArticle(htmlText = null, pageUrl = null) {
     const blocks = clone.querySelectorAll("p, div, li, h3, h4");
     const leafBlocks = Array.from(blocks).filter((b) => !b.querySelector("p, div, li"));
     paragraphs = leafBlocks.map((b) => (b.textContent || "").replace(/\s+/g, " ").trim()).filter((t) => t.length > 15);
-    if (paragraphs.length < 2) {
+    // 블록 안에 잡힌 글이 본문 전체의 일부(60% 미만)뿐이면 <br> 단위 줄바꿈 본문으로 보고 다시 나눈다
+    const blockChars = paragraphs.reduce((n, t) => n + t.length, 0);
+    const wholeChars = (clone.textContent || "").replace(/\s+/g, " ").trim().length;
+    if (paragraphs.length < 2 || blockChars < wholeChars * 0.6) {
       paragraphs = (clone.innerHTML || "")
-        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<br\s*\/?>|<\/(?:p|div|li|h3|h4)>/gi, "\n")
         .replace(/<[^>]+>/g, "")
         .replace(/&nbsp;/g, " ")
         .split(/\n+/)

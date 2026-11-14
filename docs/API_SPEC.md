@@ -221,3 +221,9 @@ Gemini 후보 ComparisonCandidatePoint에는 review_status가 없다. 서버만 
 - ComparisonCandidatePoint/ReportComparisonPoint의 related_quote_ko(최대 700자), explanation(최대 300자)를 review_kind/context_anchor/review_status와 함께 보존한다. 번역과 차이 설명은 AI 생성이며 실제 원문 인용의 존재 검사를 대체하지 않는다.
 - RelatedArticle.original_candidate(boolean, 기본 false)는 공식 도메인·추정 영문 제목/번역 단어로 찾은 원문 후보를 나타낸다. 이 값으로 Source.original_status 또는 discovery를 승격하지 않는다. 실제 인용 관계인 cited_by_article, 원본 확인인 original_found와 별개다.
 - is_original/is_original_candidate는 서버가 비교 프롬프트에 보내는 구분이다. 후보의 인용 관계를 모델이 확정할 수 없다. 기존 API 경로는 유지하고 스키마/캐시/health 버전은 source-tracing-v1.9로 통일한다.
+
+## 관련 영상 (related_videos)
+- ArticleAnalysis.related_videos(선택, 기본 빈 배열, 최대 5건)는 공신력 있는 방송사·외신의 **공식 유튜브 채널** 영상을 보여 준다. 기사가 인용한 출처가 아니라 관련 영상이며, 영상 내용이 맞는지는 판단하지 않는다.
+- RelatedVideo: id, url(youtube.com/youtu.be만 허용), title(≤300), channel(≤120), channel_label(≤60, 화면 표시 이름), thumbnail_url(ytimg.com만 허용, 없을 수 있음), published_at.
+- 서버는 Tavily로 youtube.com 안에서만 검색하고, 유튜브 oEmbed로 채널명·제목·썸네일을 확인한다. 채널명이 허용 목록(`backend/app/videos.py`, `video_channels.json`으로 확장)과 **정확히** 일치하고, 영상 제목이 기사 제목(한국어는 핵심 단어 2개 이상, 영어는 영어 검색어와의 단어 겹침)과 맞을 때만 포함한다.
+- 환경변수: VIDEO_SEARCH=off로 끈다(기본 켜짐), VIDEO_LIMIT(1~5, 기본 3). 썸네일은 유튜브 서버에서 불러오므로 사용자의 IP가 유튜브에 전달된다.

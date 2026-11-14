@@ -156,6 +156,19 @@ function relatedList(items,demo,detailed=false) {
   if(!detailed)return '<ul class="related-list">'+items.map(report=>'<li class="related-row">'+row(report,true)+'</li>').join('')+'</ul>';
   return '<div class="related-details">'+items.map(report=>'<details class="report-detail"'+(report.id?' id="related-report-'+esc(report.id)+'"':'')+'><summary class="related-row">'+row(report,false)+'<span class="report-open" aria-hidden="true">⌄</span></summary><div class="report-body"><p>'+safeLink(report.url,'원문 기사 열기',demo)+'</p>'+reportComparison(report,true)+'<p class="muted">'+esc(report.independence)+'</p></div></details>').join('')+'</div><p class="trace-note">공통 보도는 사실 확인을 뜻하지 않으며 표현 차이만으로 어느 쪽이 맞는지 판단하지 않습니다.</p>';
 }
+// 공식 방송사·외신 채널의 관련 영상. 기사가 인용한 출처가 아니므로 "관련 영상"으로만 표기하고 내용의 사실 여부는 판단하지 않는다.
+function videoCards(a) {
+  const videos = a.related_videos || [];
+  if (!videos.length) return '';
+  const card = v => {
+    let href = '';
+    try { const u = new URL(v.url); if (u.protocol === 'https:' && !u.username && !u.password) href = u.href; } catch { /* 링크 없이 표시 */ }
+    const thumb = v.thumbnail_url ? '<img class="video-thumb" src="' + esc(v.thumbnail_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '<span class="video-thumb video-thumb-empty" aria-hidden="true">▶</span>';
+    const inner = thumb + '<span class="video-meta"><span class="video-channel">' + esc(v.channel_label) + '</span><span class="video-title" title="' + esc(v.title) + '">' + esc(v.title) + '</span><span class="video-date">' + esc(v.published_at ? compactDate(v.published_at).slice(0, 10) : '날짜 미확인') + '</span></span>';
+    return '<li class="video-card">' + (href && !a.is_demo ? '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" aria-label="' + esc(v.channel_label + ' 영상: ' + v.title) + '">' + inner + '</a>' : '<div>' + inner + (a.is_demo ? '<span class="muted">(시연용 링크)</span>' : '') + '</div>') + '</li>';
+  };
+  return '<div class="related-videos"><h3>관련 영상 · 공식 채널</h3><ul class="video-list">' + videos.map(card).join('') + '</ul><p class="trace-note">기사가 인용한 출처가 아니라 같은 주제의 공식 채널 영상이며, 영상 내용의 사실 여부는 판단하지 않습니다. 썸네일은 유튜브에서 불러옵니다.</p></div>';
+}
 export function sectionData(a) {
   const article = a.article;
   const metadata = '<dl>' + [['언론사',article.publisher],['기자',article.author],['작성일',article.published_at?compactDate(article.published_at):null]].map(([k,v]) => '<dt>' + k + '</dt><dd>' + esc(v || '미확인') + '</dd>').join('') + '</dl>';
@@ -221,7 +234,7 @@ export function sectionData(a) {
       (looseMentions.length ? '<h3>주장과 연결되지 않은 근거</h3><ol class="evidence-list">' + looseMentions.map(evidenceItem).join('') + '</ol>' : '') +
       (otherCited.length ? '<h3>기사에 언급된 기타 자료</h3>' + otherCited.map(s => '<div id="evidence-source-'+esc(s.id)+'">'+sourceDetails(s,a.is_demo)+'</div>').join('') : '') +
       '<p class="trace-note">기사 안에서 제시된 근거만 보여줍니다. 외부 검색으로 찾은 자료는 근거로 표시하지 않습니다.</p>'},
-    {id:'related',title:'비슷한 주제의 기사',summary:relatedList(related.slice(0,5),a.is_demo),details:relatedList(related,a.is_demo,true)}
+    {id:'related',title:'비슷한 주제의 기사',summary:relatedList(related.slice(0,5),a.is_demo)+videoCards(a),details:relatedList(related,a.is_demo,true)+videoCards(a)}
   ];
 }
 const moreLabel = s => (s.more || '자세히 보기') + ' ›';

@@ -12,6 +12,18 @@ export function isSupportedArticleUrl(value) {
   } catch { return false; }
 }
 
+// 기사가 아닌 것이 분명한 페이지(검색 결과·영상·메신저·AI 채팅 등). 분석하면 엉뚱한 결과와 검색 크레딧만 쓰게 된다.
+const NON_ARTICLE_HOSTS = ['search.naver.com', 'search.daum.net', 'www.bing.com', 'duckduckgo.com', 'claude.ai', 'chatgpt.com', 'gemini.google.com',
+  'www.youtube.com', 'youtube.com', 'm.youtube.com', 'music.youtube.com', 'github.com', 'mail.google.com', 'docs.google.com', 'web.whatsapp.com'];
+export function isNonArticlePage(value) {
+  try {
+    const url = new URL(value);
+    if (NON_ARTICLE_HOSTS.includes(url.hostname)) return true;
+    if (/^(www\.)?google\.[a-z.]+$/.test(url.hostname) && url.pathname === '/search') return true;
+    return false;
+  } catch { return false; }
+}
+
 export function normalizeArticleUrl(value) {
   const url = new URL(value);
   if (!['http:','https:'].includes(url.protocol) || url.username || url.password) throw new Error('올바른 기사 URL이 필요합니다.');

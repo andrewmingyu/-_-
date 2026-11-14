@@ -474,11 +474,19 @@ def _weak_pick_setup(judged):
     return WLLM, WSearch, req
 
 
-def test_weak_quote_only_pick_is_dropped_when_the_judge_says_it_is_not_the_same_report():
+def test_weak_quote_only_pick_is_dropped_in_strict_mode_when_the_judge_says_it_is_not_the_same_report(monkeypatch):
+    monkeypatch.setenv('ORIGINAL_JUDGE_STRICT', 'on')
     WLLM, WSearch, req = _weak_pick_setup(lambda p: None)
     result = asyncio.run(Analyzer(WLLM(), WSearch()).analyze(req))
     assert WLLM.calls == 1
     assert not any('bbc.com/news/wrong' in str(r.url) for r in result.related_articles)
+
+
+def test_weak_quote_only_pick_is_kept_as_a_candidate_by_default_when_the_judge_is_unsure():
+    WLLM, WSearch, req = _weak_pick_setup(lambda p: None)
+    result = asyncio.run(Analyzer(WLLM(), WSearch()).analyze(req))
+    kept = [r for r in result.related_articles if 'bbc.com/news/wrong' in str(r.url)]
+    assert kept and kept[0].original_candidate is True  # 후보일 뿐 원본 확인이 아니다
 
 
 def test_judge_failure_keeps_the_weak_pick_and_snippet_only_pages_are_shown_to_the_judge():
@@ -561,3 +569,144 @@ def test_quoted_title_is_taken_from_the_body_even_if_extraction_missed_it():
     assert seen['payload']['quoted_titles'] == ['21세기 정치적 도박']
     assert seen['translated'] == ['21세기 정치적 도박']
     assert any(q == 'The political gamble of the 21st Century' and 'bbc.com' in d for q, d in s.scoped)  # 영어 원제로 매체 도메인 검색
+
+
+def test_social_platforms_are_searched_only_when_the_article_names_them():
+    assert 'x.com' in domains_for('로라 비커 기자는 본인의 트위터에 글을 올렸다')
+    assert 'threads.com' in domains_for('스레드에 올라온 글이 화제가 됐다')
+    assert 'facebook.com' in domains_for('Facebook post')
+    assert domains_for('시민 A씨가 글을 올렸다') == []
+
+
+def test_outlet_with_no_hits_gets_its_own_scoped_search(monkeypatch):
+    monkeypatch.setenv('ENGLISH_SEARCH', 'on')
+    calls = []
+
+    class Gap(Search):
+        async def search_in(self, query, domains=None):
+            calls.append(list(domains or []))
+            if domains == ['wsj.com']:
+                return [{'url': 'https://www.wsj.com/us-news/faa-temporarily-halts-flights-across-u-s-b9b06e59', 'title': 'FAA halts flights', 'content': 'x', 'raw_content': 'FAA halted flights nationwide'}]
+            return [{'url': 'https://www.cnn.com/a', 'title': 'CNN FAA', 'content': 'x', 'raw_content': 'FAA'}] if 'cnn.com' in (domains or []) else []
+
+    req = AnalyzeRequest(url=URL, title='미국 항공편 중단', page_text='월스트리트저널(WSJ)와 CNN에 따르면 FAA가 항공편을 중단했다.',
+                         metadata=Article(url=URL, title='미국 항공편 중단'))
+    asyncio.run(Analyzer(LLM(), Gap()).analyze(req))
+    assert ['wsj.com'] in calls
+    assert ['cnn.com'] not in calls
+
+
+def test_judge_pool_keeps_a_candidate_from_every_named_outlet():
+    class Judge(LLM):
+        seen = []
+
+        async def generate(self, instruction, payload, schema):
+            if schema.__name__ == 'OriginalJudgement':
+                Judge.seen = [c['url'] for c in payload['candidates']]
+                return schema(original_id=None, reason='x')
+            return await super().generate(instruction, payload, schema)
+
+    mk = lambda u, t: {'id': 'i' + str(abs(hash(u)))[:6], 'url': u, 'title': t, 'content': '', 'snippet': t}
+    cands = [mk(f'https://www.nytimes.com/{i}', 'FAA grounds all flights nationwide') for i in range(4)] + \
+            [mk('https://www.wsj.com/us-news/halt', 'Officials blamed outdated technology')]
+    an = Analyzer(Judge(), Search())
+    req = AnalyzeRequest(url=URL, title='t', page_text='b', metadata=Article(url=URL, title='t'))
+    asyncio.run(an._judge_original(req, cands, ['nytimes.com', 'wsj.com'], ['FAA grounds all flights nationwide']))
+    assert any('wsj.com' in u for u in Judge.seen)
+
+
+def test_outlet_the_article_attributes_to_is_searched_first():
+    seen = []
+
+    class Order(Search):
+        async def search_in(self, query, domains=None):
+            seen.append(list(domains or []))
+            return []
+
+    req = AnalyzeRequest(url=URL, title='미국 항공편 중단', page_text='CNN은 보도했다. 한편 월스트리트저널(WSJ)에 따르면 항공편이 중단됐다. ' + TEXT,
+                         metadata=Article(url=URL, title='미국 항공편 중단'))
+    asyncio.run(Analyzer(LLM(label='WSJ'), Order()).analyze(req))
+    assert seen[0].index('wsj.com') < seen[0].index('cnn.com')  # 근거 언급에 나온 WSJ가 본문에만 나온 CNN보다 먼저
+
+
+def test_gap_search_drops_other_outlet_names_from_the_query(monkeypatch):
+    monkeypatch.setenv('ENGLISH_SEARCH', 'on')
+    queries = {}
+
+    class Q(Search):
+        async def search_in(self, query, domains=None):
+            queries[tuple(domains or [])] = query
+            return [{'url': 'https://www.cnn.com/a', 'title': 'c', 'content': 'x', 'raw_content': 'FAA'}] if domains and 'cnn.com' in domains else []
+
+    class L(LLM):
+        async def generate(self, instruction, payload, schema):
+            if schema is EnglishQuery:
+                return EnglishQuery(query='CNN FAA grounds all flights nationwide')
+            return await super().generate(instruction, payload, schema)
+
+    req = AnalyzeRequest(url=URL, title='미국 항공편 중단', page_text='월스트리트저널(WSJ)와 CNN에 따르면 FAA가 항공편을 중단했다.',
+                         metadata=Article(url=URL, title='미국 항공편 중단'))
+    asyncio.run(Analyzer(L(), Q()).analyze(req))
+    assert 'CNN' not in queries[('wsj.com',)] and 'FAA' in queries[('wsj.com',)]
+
+
+def test_outlet_name_alone_is_not_an_original_title_and_listing_pages_are_not_originals():
+    from app.service import title_matches, looks_like_article_url, best_original
+    assert not title_matches(['Wall Street Journal'], 'Latest Podcasts - The Wall Street Journal')
+    assert title_matches(['Trump and North Korea talks gamble'], 'Trump and North Korea talks: A gamble - BBC News')
+    for url in ['https://www.wsj.com/audio/podcasts', 'https://www.wsj.com/', 'https://www.cnn.com/videos/x', 'https://www.nytimes.com/section/us']:
+        assert not looks_like_article_url(url), url
+    assert looks_like_article_url('https://www.wsj.com/us-news/faa-temporarily-halts-flights-b9b06e59')
+    page = {'id': 'p', 'url': 'https://www.wsj.com/audio/podcasts', 'title': 'Latest Podcasts - The Wall Street Journal', 'content': ''}
+    assert best_original([page], ['wsj.com'], ['Wall Street Journal'], []) is None
+
+
+def test_candidate_dates_come_from_the_url_or_published_at_and_far_dates_are_flagged():
+    from datetime import date
+    from app.service import candidate_date, near_article_date
+    day = date(2026, 11, 14)
+    live = {'url': 'https://www.cnn.com/2026/11/13/us/live-news/flights-ground-stop-faa', 'published_at': None}
+    old = {'url': 'https://www.cnn.com/2026/07/31/politics/sweeping-cyberattack-us-water-systems', 'published_at': None}
+    undated = {'url': 'https://www.wsj.com/livecoverage/faa-flights-united-planes', 'published_at': None}
+    dated = {'url': 'https://www.wsj.com/livecoverage/x', 'published_at': '2026-11-13T20:00:00Z'}
+    assert candidate_date(live) == date(2026, 11, 13)
+    assert near_article_date(live, day) is True
+    assert near_article_date(old, day) is False   # 다른 사건(7월 기사)
+    assert near_article_date(undated, day) is None  # 날짜를 모르면 판단하지 않는다
+    assert near_article_date(dated, day) is True
+    assert near_article_date(live, None) is None
+
+
+def test_each_outlet_the_article_cites_gets_its_own_original_candidate(monkeypatch):
+    monkeypatch.setenv('ENGLISH_SEARCH', 'on')
+
+    class Rows(Search):
+        async def search_in(self, query, domains=None):
+            rows = []
+            if domains and any(d.endswith('cnn.com') for d in domains):
+                rows.append({'url': 'https://www.cnn.com/2026/11/13/us/live-news/faa-ground-stop', 'title': 'Live updates FAA ground stop',
+                             'content': 'x', 'raw_content': 'FAA grounds all flights nationwide after communication failure, officials said'})
+                rows.append({'url': 'https://www.cnn.com/2026/07/31/politics/water-systems-cyberattack', 'title': 'Water cyberattack',
+                             'content': 'x', 'raw_content': 'FAA grounds nationwide flights cyberattack water'})  # 날짜가 달라 제외
+            if domains and any(d.endswith('wsj.com') for d in domains):
+                rows.append({'url': 'https://www.wsj.com/business/airlines/faa-halts-departing-flights-nationwide-d2c54958', 'title': 'FAA halts flights',
+                             'content': 'x', 'raw_content': 'FAA grounds all flights nationwide after communication failure'})
+                rows.append({'url': 'https://www.wsj.com/audio/podcasts', 'title': 'Podcasts', 'content': 'x', 'raw_content': 'FAA grounds all flights nationwide'})
+            return rows
+
+    class L(LLM):
+        async def generate(self, instruction, payload, schema):
+            if schema is EnglishQuery:
+                return EnglishQuery(query='FAA grounds all flights nationwide communication failure')
+            return await super().generate(instruction, payload, schema)
+
+    req = AnalyzeRequest(url=URL, title='미국 전역 항공편 중단', page_text='CNN과 월스트리트저널(WSJ)에 따르면 항공편이 중단됐다. ' + TEXT,
+                         metadata=Article(url=URL, title='미국 전역 항공편 중단', published_at='2026-11-14T10:30:00+09:00'))
+
+    class Both(L):
+        pass
+    llm = Both(label='CNN')
+    result = asyncio.run(Analyzer(llm, Rows()).analyze(req))
+    urls = [str(r.url) for r in result.related_articles if r.original_candidate]
+    assert 'https://www.cnn.com/2026/11/13/us/live-news/faa-ground-stop' in urls
+    assert not any('water-systems' in u or 'podcasts' in u for u in urls)
