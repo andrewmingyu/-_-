@@ -1,42 +1,3 @@
-// 출처 추적 현황 요약.
-// 기사 내용의 사실·거짓이나 신뢰도를 판정하지 않고, 서버가 돌려준 "출처 확인 상태"만 센다.
-const STATUS_LABELS = {
-  original_found: '원본 자료 확인',
-  secondary_only: '재인용만 확인',
-  source_not_found: '원출처 못 찾음',
-  unknown: '정보 부족',
-};
-export const TRACE_NOTE = '출처를 찾았는지 보여 주는 표시예요. 원본 자료가 있어도 기사 내용이 맞다는 뜻은 아니고, 사실 여부는 판정하지 않아요.';
-
-export function traceSummary(a) {
-  if (!a || a.ui_state) return null; // 분석 중·오류 화면에서는 표시하지 않는다
-  const claims = Array.isArray(a.claims) ? a.claims : [];
-  const claimStatuses = claims.map(c => (c.source_status in STATUS_LABELS ? c.source_status : 'unknown'));
-  const count = key => claimStatuses.filter(s => s === key).length;
-  const total = claimStatuses.length;
-  const found = count('original_found');
-
-  let headline;
-  if (!total) headline = '기사에서 출처를 추적할 주장을 찾지 못했어요';
-  else if (found === total) headline = '주장 ' + total + '개 모두 원본 자료를 찾았어요';
-  else if (found > 0) headline = '주장 ' + total + '개 중 ' + found + '개의 원본 자료를 찾았어요';
-  else if (count('secondary_only') > 0) headline = '원본은 못 찾고 재인용 자료만 확인했어요';
-  else if (count('source_not_found') > 0) headline = '원출처를 찾지 못했어요';
-  else headline = '출처를 확인할 정보가 부족해요';
-
-  const notice = sourceNotice(a);
-  const cautionCount = notice?.issues.length || 0;
-  return {
-    headline,
-    total,
-    cells: claimStatuses.map(key => ({ key, label: STATUS_LABELS[key] })),
-    legend: Object.keys(STATUS_LABELS).filter(key => count(key) > 0).map(key => ({ key, label: STATUS_LABELS[key], count: count(key) })),
-    caution: cautionCount > 0,
-    cautionCount,
-    partial: notice?.partial || false,
-  };
-}
-
 export const NOTICE_NOTE = '출처 확인·주의 상태이며 기사의 사실·거짓이나 언론사의 신뢰 등급을 판정하지 않습니다.';
 const LEVELS = {
   review: {icon:'🔴',text:'교차검증 필요'},
@@ -79,6 +40,11 @@ export function sourceNotice(a) {
   else if (a.search_status!=='completed') incomplete.add('출처 검색 완료 여부를 확인하지 못했습니다.');
   const coreErrors=(a.pipeline_errors || []).filter(e=>['source_search','document_fetch','source_review'].includes(e.phase));
   for(const error of coreErrors) incomplete.add(error.message);
+  // 원문 후보를 찾았는데 기사와의 인용 관계만 미확인이면 '찾지 못했다'가 아니라 '연결 확인 필요'로 안내한다
+  const candidate=reports.find(r=>r.original_candidate);
+  const notFound=candidate
+    ? ['원문 후보: '+(candidate.publisher || '')+'「'+candidate.title+'」',[candidate.id]]
+    : ['원출처 추가 확인 필요: 완료한 검색 범위에서 원자료를 찾지 못했습니다.',[]];
   for(const error of a.search_errors || []) {
     if (!/관련 기사|다른 보도/.test(error)) incomplete.add(error);
   }
@@ -89,7 +55,7 @@ export function sourceNotice(a) {
     const own=mentions.filter(m=>(m.claim_ids || []).includes(c.id));
     if(own.some(m=>m.anonymous)) add('anonymous','출처 추가 확인 필요: 익명 발언에 의존하는 주장이 있습니다.',[c.id],c.source_ids || []);
     if(c.source_status==='secondary_only') add('secondary','원자료 확인 필요: 재인용 자료만 확인했습니다.',[c.id],c.source_ids || []);
-    else if(c.source_status==='source_not_found' && a.search_status==='completed') add('not_found','원출처 추가 확인 필요: 완료한 검색 범위에서 원자료를 찾지 못했습니다.',[c.id]);
+    else if(c.source_status==='source_not_found' && a.search_status==='completed') add('not_found',notFound[0],[c.id],[],notFound[1]);
     else if(c.source_status!=='original_found') incomplete.add('일부 핵심 주장과 원출처의 관계를 확인하지 못했습니다.');
     if(c.source_status==='original_found') {
       const linked=sources.filter(s=>(c.source_ids || []).includes(s.id) && s.discovery==='article_cited' &&
@@ -122,11 +88,11 @@ export function sourceNotice(a) {
       if(/익명 관계자/.test(text)){code='anonymous';message='출처 추가 확인 필요: 익명 발언에 의존하는 주장이 있습니다.';}
       else if(/의견·해석·예측/.test(text)){code='interpretation';message='해석·예측 주의: 사건 발생 사실과 구분해 읽어야 합니다.';}
       else if(/재인용/.test(text)){code='secondary';message='원자료 확인 필요: 재인용 자료만 확인했습니다.';}
-      else if(/완료된 검색 범위.*원출처를 찾지/.test(text)){code='not_found';message='원출처 추가 확인 필요: 완료한 검색 범위에서 원자료를 찾지 못했습니다.';}
+      else if(/완료된 검색 범위.*원출처를 찾지/.test(text)){code='not_found';message=notFound[0];}
       else if(/근거의 출처가 기사에 명확히/.test(text)){code='attribution';message='출처 표기 확인 필요: 일부 주장의 근거 출처가 명확하지 않습니다.';}
       else if(/조사·연구 방법/.test(text)){code='methodology';message='조사 방법 확인 필요: 통계·연구의 방법을 확인하지 못했습니다.';}
       else if(/자료 작성자의 이해관계/.test(text)){message='이해관계 주의: '+text;}
-      add(code,message,[...cids,...(row.claim_ids || [])],[...sids,...(row.source_ids || [])]);
+      add(code,message,[...cids,...(row.claim_ids || [])],[...sids,...(row.source_ids || [])],code==='not_found'?notFound[1]:[]);
     }
   }
   for(const report of reports) {
@@ -142,6 +108,7 @@ export function sourceNotice(a) {
       add('report:'+report.id+':'+kind,message,[],[],[report.id],red?'review':'caution');
     }
   }
+  if(candidate && issues.has('not_found')) issues.get('not_found').candidate_id=candidate.id;
   const items=[...issues.values()].sort((a,b)=>(b.severity==='review')-(a.severity==='review'));
   const level=items.some(i=>i.severity==='review')?'review':items.length?'caution':incomplete.size?'unknown':'clear';
   return {level,...LEVELS[level],issues:items,incomplete:[...incomplete],partial:incomplete.size>0};

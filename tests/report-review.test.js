@@ -32,7 +32,7 @@ test('red notice opens the exact related report and preserves the other open car
   assert.equal(report.open,true);assert.equal(root.querySelector('#details-related').hidden,false);
   assert.equal(root.querySelector('#details-claims').hidden,false);
   assert.ok(report.textContent.includes(current)&&report.textContent.includes(other));
-  assert.ok(report.querySelector('.report-review'));assert.equal(root.querySelectorAll('[data-toggle]').length,6);
+  assert.ok(report.querySelector('.report-review'));assert.equal(root.querySelectorAll('[data-toggle]').length,4);
 });
 test('unconfirmed comparison material stays yellow and cannot masquerade as red',()=>{
   const a=example(),r=a.related_articles[0];
@@ -78,7 +78,7 @@ test('merged top comparison keeps candidate disclosure, translation, red alert a
   const card=root.querySelector('.odiff');assert.ok(card);
   assert.match(card.textContent,/원문 후보 · 인용 관계 미확인/);
   assert.match(card.textContent,/AI 한국어 번역/);assert.ok(card.textContent.includes(p.explanation));
-  assert.ok(card.querySelector('.report-review'));assert.equal(root.querySelectorAll('[data-toggle]').length,6);
+  assert.ok(card.querySelector('.report-review'));assert.equal(root.querySelectorAll('[data-toggle]').length,4);
   card.querySelector('[data-report-review]').click();
   assert.equal(document.getElementById('related-report-'+r.id).open,true);
   assert.equal(root.querySelector('#details-claims').hidden,false);

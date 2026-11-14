@@ -26,7 +26,7 @@ try {
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:'+server.address().port+'/sidepanel/sidepanel.html?demo');
   const toggles=page.locator('[data-toggle]');
-  await toggles.last().waitFor();assert.equal(await toggles.count(),6);
+  await toggles.last().waitFor();assert.equal(await toggles.count(),4);
   await toggles.nth(0).press('Enter');
   await toggles.nth(3).press('Space');
   assert.equal(await toggles.nth(0).getAttribute('aria-expanded'),'true');
@@ -34,17 +34,16 @@ try {
   await toggles.nth(0).click();
   assert.equal(await toggles.nth(3).getAttribute('aria-expanded'),'true');
   await page.locator('#btn-refresh').click();
-  await page.waitForFunction(()=>document.querySelector('[data-toggle="evidence"]')?.getAttribute('aria-expanded')==='true');
+  await page.waitForFunction(()=>document.querySelector('[data-toggle="related"]')?.getAttribute('aria-expanded')==='true');
   assert.equal(await page.locator('.demo-banner').count(),1);
   assert.equal(await page.locator('a[href*=".example"]').count(),0);
   const text=await page.locator('body').innerText();
   assert.doesNotMatch(text,/신뢰도|거짓 또는 오류|다른 보도와 일치|종합 신뢰 지수|\d+점|\d+%/);
   assert.equal(await page.locator('.notice-card').getAttribute('aria-label'),'출처 확인·주의 상태');
   assert.equal(await page.locator('.notice-card').evaluate(el=>el.classList.contains('notice-caution')),true);
-  await page.locator('[data-notice-details]').click();
-  assert.equal(await page.locator('#details-cautions').isVisible(),true);
+  assert.equal(await page.locator('[data-notice-details]').count(),0);
+  assert.equal(await page.locator('[data-section="cautions"]').count(),0);
   assert.equal(await toggles.nth(3).getAttribute('aria-expanded'),'true');
-  await page.locator('[data-toggle="cautions"]').click();
   await toggles.nth(3).click();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await fs.mkdir('.tools',{recursive:true});
@@ -68,13 +67,13 @@ try {
   assert.equal(await page.locator('#summary-context .context-arrow').count(),1);
   for(const row of await page.locator('#summary-related .related-row').all())assert.ok((await row.boundingBox()).height<45);
   await page.setViewportSize({width:880,height:1000});
-  const boxes=await Promise.all(['context','metadata','claims','evidence','cautions','related'].map(id=>page.locator('[data-section="'+id+'"]').boundingBox()));
+  const boxes=await Promise.all(['context','metadata','claims','related'].map(id=>page.locator('[data-section="'+id+'"]').boundingBox()));
   const wideSummary=await page.locator('.analysis-summary').boundingBox();
   assert.equal(boxes[1].y,wideSummary.y);assert.ok(boxes[1].width<wideSummary.width);
   assert.ok(boxes[0].y>=boxes[1].y+boxes[1].height);
-  assert.equal(boxes[2].x,boxes[0].x);assert.ok(boxes[3].x>boxes[2].x);
-  assert.equal(boxes[4].x,boxes[0].x);assert.equal(boxes[4].width,boxes[0].width);
-  assert.equal(boxes[5].width,boxes[4].width);
+  // 넓은 화면: 배경·주장과 근거·비슷한 기사가 모두 전체 폭으로 위에서 아래로 쌓인다
+  for(const i of [2,3]){assert.equal(boxes[i].x,boxes[0].x);assert.equal(boxes[i].width,boxes[0].width);}
+  assert.ok(boxes[2].y>boxes[0].y && boxes[3].y>boxes[2].y);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.screenshot({path:'.tools/panel-reference-layout.png',fullPage:true});
   await page.locator('[data-toggle="related"]').click();
@@ -95,7 +94,7 @@ try {
   await page.setViewportSize({width:440,height:900});
   await page.locator('[data-headline-toggle]').press('Enter');
   await page.locator('[data-headline-jump="0"]').click();
-  assert.equal(await page.locator('#details-evidence').isVisible(),true);
+  assert.equal(await page.locator('#details-claims').isVisible(),true);
   assert.equal(await page.locator('#headline-details').isVisible(),true);
   assert.ok((await page.evaluate(()=>document.activeElement.id)).startsWith('evidence-mention-'));
   await page.waitForFunction(()=>{
@@ -104,16 +103,16 @@ try {
   });
   await page.screenshot({path:'.tools/headline-evidence-jump.png'});
   await page.locator('[data-headline-toggle]').click();
-  assert.equal(await page.locator('#details-evidence').isVisible(),true);
-  await page.locator('[data-toggle="evidence"]').click();
+  assert.equal(await page.locator('#details-claims').isVisible(),true);
+  await page.locator('[data-toggle="claims"]').click();
   await page.evaluate(()=>scrollTo(0,0));
   await page.emulateMedia({colorScheme:'dark'});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.screenshot({path:'.tools/headline-dark.png',fullPage:true});
   await page.emulateMedia({colorScheme:'light'});
-  await page.locator('[data-toggle="cautions"]').click();
-  await page.locator('[data-section="cautions"]').scrollIntoViewIfNeeded();
-  await page.screenshot({path:'.tools/cautions-clean.png'});
+  await page.locator('[data-toggle="claims"]').click();
+  await page.locator('[data-section="claims"]').scrollIntoViewIfNeeded();
+  await page.screenshot({path:'.tools/claims-with-evidence.png'});
   // Exercise content-script events with deterministic server responses, not real API calls.
   const fixture=JSON.parse(await fs.readFile(path.join(root,'data/demo.json'),'utf8'));
   const origin='http://127.0.0.1:'+server.address().port;
@@ -136,7 +135,7 @@ try {
   assert.match(await reviewPage.locator('.odiff').innerText(),/교차검증 필요/);
   assert.doesNotMatch(await reviewPage.locator('.notice-review').innerText(),/왜곡했습니다|\d+점/);
   await reviewPage.screenshot({path:'.tools/report-review-panel.png',fullPage:true});
-  await reviewPage.locator('.notice-card [data-report-review]').click();
+  await reviewPage.locator('.notice-card [data-report-review]').first().click();
   const reviewReport=reviewPage.locator('#related-report-'+fixture.related_articles[0].id);
   assert.equal(await reviewReport.getAttribute('open'),'');
   assert.equal(await reviewPage.locator('#details-claims').isVisible(),true);

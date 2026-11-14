@@ -88,7 +88,7 @@ try{
   // A + D: actual extraction → actual worker/client → HTTP FastAPI → demo providers → six-card UI.
   await panel.goto(origin+'/sidepanel/sidepanel.html');
   await panel.locator('.demo-banner').waitFor();
-  assert.equal(await panel.locator('[data-toggle]').count(),6);
+  assert.equal(await panel.locator('[data-toggle]').count(),4);
   const full=results.find(r=>r.message.type==='NEWSCHECK_ANALYZE').result.data;
   assert.equal(full.article.url,articleUrl);assert.equal(full.article.author,'김가상');
   assert.equal(full.article.event_location,'서울');assert.equal(full.article.event_time,'2026년 11월 10일');
@@ -105,11 +105,11 @@ try{
   assert.ok(full.related_articles[0].comparison_points.some(point=>point.kind==='common'));
   assert.ok(full.related_articles[0].comparison_points.some(point=>point.kind==='difference'));
   assert.equal(counts.analyze,1);
-  for(const id of ['context','metadata','claims','evidence','cautions','related'])await panel.locator('[data-toggle="'+id+'"]').click();
+  for(const id of ['context','metadata','claims','related'])await panel.locator('[data-toggle="'+id+'"]').click();
   await panel.locator('[data-headline-toggle]').click();
   await panel.locator('[data-headline-jump="0"]').click();
-  assert.equal(await panel.locator('#details-evidence').isVisible(),true);
   assert.equal(await panel.locator('#details-claims').isVisible(),true);
+  assert.equal(await panel.locator('#details-claims .evidence-item').count()>0,true);
   await panel.locator('#details-related .report-detail > summary').first().click();
   assert.equal(await panel.locator('#details-related .report-pair').count(),2);
   assert.ok((await panel.locator('#details-related').innerText()).includes('검색 요약 범위 비교'));
@@ -150,8 +150,8 @@ try{
   // A real connection failure is displayed on all affected cards, with retry and page metadata.
   await stopBackend();await panel.locator('#btn-refresh').click();
   await panel.locator('[data-retry]').waitFor();
-  assert.equal(await panel.locator('[data-toggle]').count(),6);
-  assert.equal(await panel.locator('.section-state').filter({hasText:'처리 실패'}).count(),5);
+  assert.equal(await panel.locator('[data-toggle]').count(),4);
+  assert.equal(await panel.locator('.section-state').filter({hasText:'처리 실패'}).count(),3);
   assert.deepEqual(errors,[]);
   console.log('A/B/C/D integration passed: extraction + actual worker + HTTP mock pipeline + all UI, warm/cold Hover, known/new selection, source/caution links, shared cache and real server-off errors.');
   console.log(JSON.stringify({counts,article_id:full.article_id,is_demo:full.is_demo}));

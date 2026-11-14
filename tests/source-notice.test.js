@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {markHeadline} from '../newscheck 4/lib/extract.js';
-import {sourceNotice, badgeInfo, traceSummary} from '../newscheck 4/shared/summary.js';
+import {sourceNotice, badgeInfo} from '../newscheck 4/shared/summary.js';
 const decision=(status='none_identified',reasons=[])=>({status,reasons});
 function base() {
   return {article:{title:'정책 검토',author:'기자',publisher:'언론사',published_at:'2026-11-12'},
@@ -60,7 +60,7 @@ test('optional profile fields and a neutral source-age notice do not block other
   a.caution=decision('unknown',['출처 속성을 확인하지 못했습니다: 작성자, 전문 분야, 자료 독립성']);
   a.sources[0].caution=decision('caution',['자료 발행일은 기사 작성일보다 800일 이전입니다. 최신 자료가 필요한지는 별도로 확인해 주세요.']);
   assert.equal(sourceNotice(a).level,'clear');
-  assert.equal(traceSummary(a).cautionCount,0);
+  assert.equal(sourceNotice(a).issues.length,0);
 });
 test('a known issue remains visible alongside an incomplete source investigation',()=>{
   const a=base();a.search_status='failed';a.claims[0].source_status='unknown';a.evidence_mentions[0].anonymous=true;
@@ -116,4 +116,14 @@ test('actual article badge uses the same state text and cautions, without score 
     assert.ok(shadow.querySelector('.pop').textContent.includes(info.lines[0]));
     assert.doesNotMatch(shadow.querySelector('.chip').textContent+shadow.querySelector('.pop').textContent,/\d+점|\d+%|신뢰 높음|🔴/);
   } finally {if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
+});
+
+test('a found original candidate is shown as a short candidate line, not as missing',()=>{
+  const a=base();a.claims[0].source_status='source_not_found';a.search_status='completed';
+  assert.match(sourceNotice(a).issues.find(i=>i.code==='not_found').text,/원자료를 찾지 못했습니다/);
+  a.related_articles=[{id:'report_bbc',url:'https://www.bbc.com/news/x',title:'Nvidia board probe',publisher:'BBC',original_candidate:true,comparison_status:'compared',comparison_basis:'body_excerpt',comparison_points:[]}];
+  const item=sourceNotice(a).issues.find(i=>i.code==='not_found');
+  assert.equal(item.text,'원문 후보: BBC「Nvidia board probe」');
+  assert.equal(item.candidate_id,'report_bbc');
+  assert.deepEqual(item.report_ids,['report_bbc']);
 });
