@@ -24,119 +24,134 @@ export function traceSummary(a) {
   else if (count('source_not_found') > 0) headline = '원출처를 찾지 못했어요';
   else headline = '출처를 확인할 정보가 부족해요';
 
-  const cautionCount = a.caution?.status === 'caution' ? (a.caution.reasons?.length || 0) : 0;
+  const notice = sourceNotice(a);
+  const cautionCount = notice?.issues.length || 0;
   return {
     headline,
     total,
     cells: claimStatuses.map(key => ({ key, label: STATUS_LABELS[key] })),
     legend: Object.keys(STATUS_LABELS).filter(key => count(key) > 0).map(key => ({ key, label: STATUS_LABELS[key], count: count(key) })),
-    caution: a.caution?.status === 'caution',
+    caution: cautionCount > 0,
     cautionCount,
-    partial: a.analysis_status === 'partial' || a.search_status === 'failed',
+    partial: notice?.partial || false,
   };
 }
 
-// 기사 제목 옆 배지용 요약 (표시 문구만 담는 단순 객체)
-// ───────── 종합 신뢰 지수 (참고용) ─────────
-// 서버가 돌려준 분석 결과를 규칙으로 계산한다. AI가 기사의 참·거짓을 판단한 값이 아니다.
-export const CRED_NOTE = '참고용 추정 점수예요. 출처·다른 보도 비교·날짜·제목 일치를 규칙으로 계산한 값이며, 기사 내용의 사실 여부를 판정한 것이 아니에요.';
-export const CRED_LEVELS = {
-  high: { icon: '🟢', text: '신뢰 높음', hint: '확인된 출처와 다른 보도 근거가 비교적 충분해요' },
-  mid: { icon: '🟡', text: '주의 필요', hint: '추가로 확인할 부분이 남아 있어요' },
-  low: { icon: '🔴', text: '주의 요망', hint: '출처가 불분명하거나 확인되지 않은 부분이 많아요' },
-  hold: { icon: '⚪', text: '판단 보류', hint: '점수를 낼 만큼 정보가 모이지 않았어요' },
+export const NOTICE_NOTE = '출처 확인·주의 상태이며 기사의 사실·거짓이나 언론사의 신뢰 등급을 판정하지 않습니다.';
+const LEVELS = {
+  review: {icon:'🔴',text:'교차검증 필요'},
+  clear: {icon:'🟢',text:'확보한 범위에서 별도 주의사항 없음'},
+  caution: {icon:'🟡',text:'주의 필요'},
+  unknown: {icon:'⚪',text:'확인 정보 부족'}
 };
-export const CRED_THRESHOLDS = { high: 70, mid: 40 };
-const WEIGHTS = { cross: 30, source: 30, verify: 15, title: 15, date: 10 };
-const FACTOR_LABELS = { cross: '교차검증', source: '출처 확인', verify: '추가 검증 필요 주장', title: '제목·본문 일치', date: '날짜' };
-const clamp = n => Math.max(0, Math.min(100, Math.round(n)));
-const mean = list => list.reduce((x, y) => x + y, 0) / list.length;
-const bigrams = text => {
-  const n = String(text || '').replace(/[^0-9A-Za-z가-힣]/g, '');
-  const set = new Set();
-  for (let i = 0; i < n.length - 1; i++) set.add(n.slice(i, i + 2));
-  return set;
-};
+const normalize = text => String(text || '').replace(/\s+/g,' ').trim().replace(/[.!。]+$/,'').trim();
 
-function crossFactor(a) {
-  const compared = (a.related_articles || []).filter(r => r.comparison_status === 'compared');
-  if (!compared.length) return null;
-  let common = 0; let diff = 0;
-  compared.forEach(r => (r.comparison_points || []).forEach(p => { if (p.kind === 'common') common++; else diff++; }));
-  const ratio = common + diff ? common / (common + diff) : 0;
-  const coverage = Math.min(1, compared.length / 2);
-  return { score: clamp(100 * (0.7 * ratio + 0.3 * coverage)), detail: '비교한 보도 ' + compared.length + '건 · 공통 ' + common + ' · 차이 ' + diff };
+export function reportReviewPoints(report) {
+  if(!report.id || report.comparison_status!=='compared' || !['body_excerpt','search_snippet','title_only'].includes(report.comparison_basis))return [];
+  return (report.comparison_points || []).filter(p=>{
+    if(p.kind!=='difference' || p.article_quote===p.related_quote || !['event','actors','time','figures','attribution'].includes(p.aspect) ||
+      !['claim_conflict','citation_difference'].includes(p.review_kind) || !['paired_excerpt','needs_confirmation'].includes(p.review_status))return false;
+    if(![p.article_quote,p.related_quote].every(q=>typeof q==='string' && q.trim().length>=8))return false;
+    if(p.review_kind==='citation_difference' && !report.cited_by_article)return false;
+    return p.review_status==='needs_confirmation' || (report.comparison_basis==='body_excerpt' &&
+      typeof p.context_anchor==='string' && p.context_anchor.length>=2 && p.article_quote.includes(p.context_anchor) && p.related_quote.includes(p.context_anchor));
+  });
 }
 
-function sourceFactor(a) {
-  const claims = a.claims || [];
-  if (!claims.length || a.search_status === 'failed') return null;
-  const weight = { original_found: 1, secondary_only: 0.5, unknown: 0.25, source_not_found: 0 };
-  const found = claims.filter(c => c.source_status === 'original_found').length;
-  const avg = mean(claims.map(c => weight[c.source_status] ?? 0.25));
-  const author = !!a.article?.author; const publisher = !!a.article?.publisher;
-  const anonymous = (a.evidence_mentions || []).filter(m => m.anonymous).length;
-  const score = clamp(70 * avg + (author ? 15 : 0) + (publisher ? 15 : 0) - Math.min(15, anonymous * 5));
-  return { score, detail: '원본 확인 ' + found + '/' + claims.length + ' · 작성자 ' + (author ? '표기' : '미확인') + ' · 언론사 ' + (publisher ? '표기' : '미확인') + (anonymous ? ' · 익명 인용 ' + anonymous : '') };
-}
-
-function dateFactor(a, now) {
-  const raw = a.article?.published_at;
-  const time = raw ? Date.parse(raw) : NaN;
-  if (Number.isNaN(time)) return null;
-  const age = Math.max(0, Math.floor((now.getTime() - time) / 86400000));
-  const score = age <= 2 ? 100 : age <= 30 ? 80 : age <= 365 ? 50 : 25;
-  return { score, detail: '작성일 ' + new Date(time).toISOString().slice(0, 10) + ' (' + age + '일 전)' };
-}
-
-function titleFactor(a) {
-  const title = a.article?.title || '';
-  const text = [a.one_line_summary, ...(a.claims || []).map(c => c.original_text)].join(' ');
-  const grams = bigrams(title);
-  if (grams.size < 4 || !text.trim()) return null;
-  const target = bigrams(text);
-  let hit = 0; grams.forEach(g => { if (target.has(g)) hit++; });
-  const overlap = hit / grams.size;
-  return { score: clamp(20 + (Math.min(Math.max(overlap, 0.1), 0.5) - 0.1) / 0.4 * 80), detail: '제목 표현이 본문 요약에 담긴 정도 ' + Math.round(overlap * 100) + '%' };
-}
-
-function verifyFactor(a) {
-  const claims = a.claims || [];
-  if (!claims.length) return null;
-  const weight = { none_identified: 1, unknown: 0.5, caution: 0 };
-  const need = claims.filter(c => c.caution?.status !== 'none_identified').length;
-  return { score: clamp(100 * mean(claims.map(c => weight[c.caution?.status] ?? 0.5))), detail: '추가 확인이 필요한 주장 ' + need + '/' + claims.length };
-}
-
-export function credibility(a, now = new Date()) {
+// Derived only from the existing source-analysis contract. No weights, truth scores,
+// outlet rankings, title word-overlap or age-based deductions are generated.
+export function sourceNotice(a) {
   if (!a || a.ui_state) return null;
-  const parts = { cross: crossFactor(a), source: sourceFactor(a), verify: verifyFactor(a), title: titleFactor(a), date: dateFactor(a, now) };
-  const factors = Object.keys(parts).filter(k => parts[k]).map(k => ({ key: k, label: FACTOR_LABELS[k], weight: WEIGHTS[k], ...parts[k] }));
-  const unmeasured = Object.keys(parts).filter(k => !parts[k]).map(k => FACTOR_LABELS[k]);
-  const weightSum = factors.reduce((x, f) => x + f.weight, 0);
-  // 주장을 하나도 추적하지 못했거나 계산에 쓸 정보가 절반 미만이면 점수를 내지 않는다.
-  const enough = (a.claims || []).length > 0 && weightSum >= 50;
-  const percent = enough ? Math.round(factors.reduce((x, f) => x + f.weight * f.score, 0) / weightSum) : null;
-  const level = percent === null ? 'hold' : percent >= CRED_THRESHOLDS.high ? 'high' : percent >= CRED_THRESHOLDS.mid ? 'mid' : 'low';
-  return { level, percent, factors, unmeasured, ...CRED_LEVELS[level] };
+  const claims=a.claims || [], mentions=a.evidence_mentions || [], sources=a.sources || [];
+  const claimIds=new Set(claims.map(c=>c.id)), sourceIds=new Set(sources.map(s=>s.id));
+  const reports=a.related_articles || [],reportIds=new Set(reports.map(r=>r.id));
+  const issues=new Map(), incomplete=new Set();
+  const add=(code,text,cids=[],sids=[],rids=[],severity='caution')=>{
+    const item=issues.get(code) || {code,text,claim_ids:[],source_ids:[],report_ids:[],severity};
+    item.claim_ids=[...new Set([...item.claim_ids,...cids.filter(id=>claimIds.has(id))])];
+    item.source_ids=[...new Set([...item.source_ids,...sids.filter(id=>sourceIds.has(id))])];
+    item.report_ids=[...new Set([...item.report_ids,...rids.filter(id=>reportIds.has(id))])];
+    issues.set(code,item);
+  };
+  if (!claims.length) incomplete.add('출처를 추적할 핵심 주장을 확보하지 못했습니다.');
+  if (a.search_status==='not_run') incomplete.add('출처 분석 전이거나 검색할 근거가 부족합니다.');
+  else if (a.search_status==='failed') incomplete.add('원출처 검색 요청이 실패했습니다.');
+  else if (a.search_status!=='completed') incomplete.add('출처 검색 완료 여부를 확인하지 못했습니다.');
+  const coreErrors=(a.pipeline_errors || []).filter(e=>['source_search','document_fetch','source_review'].includes(e.phase));
+  for(const error of coreErrors) incomplete.add(error.message);
+  for(const error of a.search_errors || []) {
+    if (!/관련 기사|다른 보도/.test(error)) incomplete.add(error);
+  }
+  for(const c of claims) {
+    if(['opinion','interpretation','prediction'].includes(c.claim_type)) {
+      add('interpretation','해석·예측 주의: 사건 발생 사실과 구분해 읽어야 합니다.',[c.id],c.source_ids || []);
+    }
+    const own=mentions.filter(m=>(m.claim_ids || []).includes(c.id));
+    if(own.some(m=>m.anonymous)) add('anonymous','출처 추가 확인 필요: 익명 발언에 의존하는 주장이 있습니다.',[c.id],c.source_ids || []);
+    if(c.source_status==='secondary_only') add('secondary','원자료 확인 필요: 재인용 자료만 확인했습니다.',[c.id],c.source_ids || []);
+    else if(c.source_status==='source_not_found' && a.search_status==='completed') add('not_found','원출처 추가 확인 필요: 완료한 검색 범위에서 원자료를 찾지 못했습니다.',[c.id]);
+    else if(c.source_status!=='original_found') incomplete.add('일부 핵심 주장과 원출처의 관계를 확인하지 못했습니다.');
+    if(c.source_status==='original_found') {
+      const linked=sources.filter(s=>(c.source_ids || []).includes(s.id) && s.discovery==='article_cited' &&
+        s.original_status==='original_found' && (s.mention_ids || []).some(id=>own.some(m=>m.id===id)));
+      if(!linked.some(s=>s.content_status==='retrieved')) incomplete.add('일부 핵심 근거의 원문 또는 기사 인용 관계를 확인하지 못했습니다.');
+    }
+  }
+  // Keep objective explanations and their references; consolidate repeated server rules.
+  const decisions=[{decision:a.caution,cids:[],sids:[]},
+    ...claims.map(c=>({decision:c.caution,cids:[c.id],sids:c.source_ids || []})),
+    ...sources.filter(s=>s.discovery==='article_cited').map(s=>({decision:s.caution,cids:[],sids:[s.id]}))];
+  for(const {decision,cids,sids} of decisions) {
+    if(!decision) continue;
+    const details=decision.details || [];
+    const rows=[...details,...(decision.reasons || []).filter(reason=>!details.some(d=>normalize(d.reason)===normalize(reason))).map(reason=>({reason}))]
+      .filter(row=>!row.source_ids?.length || row.claim_ids?.length || row.source_ids.some(id=>sources.some(s=>s.id===id && s.discovery==='article_cited')));
+    if(decision?.status==='unknown') {
+      for(const row of rows) {
+        if(!normalize(row.reason).startsWith('출처 속성을 확인하지 못했습니다:')) incomplete.add(row.reason);
+      }
+    }
+    if(decision?.status!=='caution') continue;
+    for(const row of rows) {
+      const text=normalize(row.reason);
+      if(!text || /^(원본 자료 확인은|출처 확인은|주의사항의 존재나 부재는|확보한 출처 정보에서 별도의 주의사항을 발견하지)/.test(text)) continue;
+      // Optional profile fields, publication age and operational failures are not adverse evidence.
+      if(/^(출처 속성을 확인하지|자료 발행일은 기사 작성일보다|원출처 검색 요청이 실패|검색된 자료와 기사 출처의 관계|기사에서 검색할 근거를 확보하지)/.test(text)) continue;
+      if((a.search_errors || []).some(error=>normalize(error)===text)) continue;
+      let code='reason:'+text, message=text;
+      if(/익명 관계자/.test(text)){code='anonymous';message='출처 추가 확인 필요: 익명 발언에 의존하는 주장이 있습니다.';}
+      else if(/의견·해석·예측/.test(text)){code='interpretation';message='해석·예측 주의: 사건 발생 사실과 구분해 읽어야 합니다.';}
+      else if(/재인용/.test(text)){code='secondary';message='원자료 확인 필요: 재인용 자료만 확인했습니다.';}
+      else if(/완료된 검색 범위.*원출처를 찾지/.test(text)){code='not_found';message='원출처 추가 확인 필요: 완료한 검색 범위에서 원자료를 찾지 못했습니다.';}
+      else if(/근거의 출처가 기사에 명확히/.test(text)){code='attribution';message='출처 표기 확인 필요: 일부 주장의 근거 출처가 명확하지 않습니다.';}
+      else if(/조사·연구 방법/.test(text)){code='methodology';message='조사 방법 확인 필요: 통계·연구의 방법을 확인하지 못했습니다.';}
+      else if(/자료 작성자의 이해관계/.test(text)){message='이해관계 주의: '+text;}
+      add(code,message,[...cids,...(row.claim_ids || [])],[...sids,...(row.source_ids || [])]);
+    }
+  }
+  for(const report of reports) {
+    const points=reportReviewPoints(report);
+    for(const kind of ['claim_conflict','citation_difference']) {
+      const own=points.filter(p=>p.review_kind===kind);if(!own.length)continue;
+      const red=own.some(p=>p.review_status==='paired_excerpt');
+      const label=report.publisher?report.publisher+' · '+report.title:report.title;
+      const message=kind==='citation_difference'
+        ? '원문 대조 필요: 「'+label+'」와 인용·조건 표현에 차이가 있어 왜곡 여부를 확인해야 합니다.'
+        : red?'교차검증 필요: 「'+label+'」와 같은 사안의 서술이 충돌할 가능성이 있어 확인이 필요합니다.'
+          :'교차검증 필요: 「'+label+'」와 차이 후보가 있어 원문·비교 맥락을 추가 확인해야 합니다.';
+      add('report:'+report.id+':'+kind,message,[],[],[report.id],red?'review':'caution');
+    }
+  }
+  const items=[...issues.values()].sort((a,b)=>(b.severity==='review')-(a.severity==='review'));
+  const level=items.some(i=>i.severity==='review')?'review':items.length?'caution':incomplete.size?'unknown':'clear';
+  return {level,...LEVELS[level],issues:items,incomplete:[...incomplete],partial:incomplete.size>0};
 }
 
-// 기사 제목 옆 배지용 요약 (표시 문구만 담는 단순 객체)
-export function badgeInfo(a, now = new Date()) {
-  const t = traceSummary(a);
-  const c = credibility(a, now);
-  if (!t || !c) return null;
-  const lines = c.factors.map(f => f.label + ' ' + f.score + '점 · ' + f.detail);
-  if (c.unmeasured.length) lines.push('계산에서 제외: ' + c.unmeasured.join(', '));
-  lines.push('사진 자료의 날짜는 읽지 못해 반영하지 않았어요');
-  return {
-    level: c.level,
-    percent: c.percent,
-    label: c.icon + ' ' + c.text + (c.percent === null ? '' : ' ' + c.percent + '%'),
-    caution: '',
-    headline: c.hint,
-    lines,
-    partial: t.partial,
-    note: CRED_NOTE,
-  };
+export function badgeInfo(a) {
+  const notice=sourceNotice(a);
+  if(!notice) return null;
+  const claimLabel=item=>item.claim_ids.map(id=>'주장 '+((a.claims || []).findIndex(c=>c.id===id)+1)).join('·');
+  return {level:notice.level,label:notice.icon+' '+notice.text+(a.is_demo?' · 시연용':''),caution:'',headline:notice.text,
+    lines:notice.issues.slice(0,3).map(item=>item.text+(item.claim_ids.length?' ('+claimLabel(item)+')':'')),
+    partial:notice.partial,note:[...(a.is_demo?['시연용 예시 · 실제 분석 결과가 아닙니다.']:[]),...notice.incomplete,NOTICE_NOTE].join(' ')};
 }

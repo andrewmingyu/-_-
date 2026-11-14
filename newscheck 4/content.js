@@ -23,7 +23,8 @@
     modules = await Promise.all([
       import(chrome.runtime.getURL('lib/extract.js')),
       import(chrome.runtime.getURL('shared/article.js')),
-      import(chrome.runtime.getURL('shared/view.js'))
+      import(chrome.runtime.getURL('shared/view.js')),
+      import(chrome.runtime.getURL('shared/selection.js'))
     ]);
   } catch (error) {
     // Imports can also be interrupted by an extension reload. Avoid an unhandled rejection.
@@ -37,7 +38,7 @@
     notice.append(close); document.documentElement.append(notice);
     return;
   }
-  const [{extractArticle}, {articleRequest,previewFromAnalysis,isSupportedArticleUrl}, view] = modules;
+  const [{extractArticle}, {articleRequest,previewFromAnalysis,isSupportedArticleUrl}, view, {selectionContext,isSingleWord,selectionPageUrl}] = modules;
   const root = document.createElement('div');
   root.id = '__newscheck_popup';
   const shadow = root.attachShadow({mode:'open'});
@@ -45,10 +46,10 @@
   document.documentElement.append(root);
   const body = shadow.querySelector('.body');
   let timer, hideTimer, sequence = 0, target = null;
-  let popupMode = null, selectedText = '', selectionOpenedThisGesture = false;
+  let popupMode = null, selectedText = '', selectedSignature = '', selectionOpenedThisGesture = false;
   const hide = () => {
     sequence++; root.style.display = 'none'; target = null;
-    popupMode = null; selectedText = ''; selectionOpenedThisGesture = false;
+    popupMode = null; selectedText = ''; selectedSignature = ''; selectionOpenedThisGesture = false;
     clearTimeout(timer); clearTimeout(hideTimer);
   };
   shadow.querySelector('.close').onclick = hide;
@@ -96,29 +97,43 @@
       clearTimeout(timer); hideTimer = setTimeout(hide,180);
     }
   });
-  document.addEventListener('mouseup', e => {
+  function selected(e) {
     if(e.composedPath().includes(root)) return;
     const selection = getSelection();
-    const text = selection?.toString().replace(/\s+/g,' ').trim();
-    if(!text || text.length < 2 || text.length > 3000) return;
-    if (popupMode === 'selection' && text === selectedText) return;
-    const article = extractArticle();
-    if(!article.isArticle) return;
-    const payload = articleRequest(article);
-    const index = payload.page_text.indexOf(text);
-    if(index < 0) return;
-    hide(); popupMode = 'selection'; selectedText = text; selectionOpenedThisGesture = true;
-    const run = ++sequence, x=e.clientX,y=e.clientY;
-    show(x,y,'<button id="trace-selection">문장 유형·출처 확인</button><p class="trace-note">선택 문장과 기사 본문을 설정된 분석 서버로 전송합니다.</p>');
-    shadow.querySelector('#trace-selection').onclick = async () => {
-      show(x,y,'<p>선택 문장의 출처를 분석하는 중입니다.</p>');
+    let article;
+    try {article=extractArticle();} catch {article={};}
+    const context=selectionContext(selection,article);
+    if(!context) return;
+    const text=context.text;
+    const signature=context.scope+'\n'+text+'\n'+context.surrounding;
+    if (popupMode === 'selection' && signature === selectedSignature) return;
+    const pageUrl=selectionPageUrl(document);
+    if(!pageUrl) {
+      hide();popupMode='selection';selectedText=text;selectedSignature=signature;selectionOpenedThisGesture=true;
+      show(Number.isFinite(e.clientX)?e.clientX:12,Number.isFinite(e.clientY)?e.clientY:12,
+        '<h3>선택한 글</h3><blockquote>'+view.esc(text)+'</blockquote><p>페이지 주소를 확인하지 못해 분석을 시작할 수 없습니다.</p>');return;
+    }
+    const payload = articleRequest({...article,url:pageUrl,title:article.title || document.title,body:context.body,
+      article_context:context.scope==='article'?article.article_context:{cited_links:[],quotations:[],body_truncated:true}});
+    const word=isSingleWord(text);
+    hide(); popupMode = 'selection'; selectedText = text; selectedSignature=signature; selectionOpenedThisGesture = true;
+    const rect=selection.getRangeAt(0).getBoundingClientRect?.() || {left:12,bottom:12};
+    const run = ++sequence, x=Number.isFinite(e.clientX)?e.clientX:rect.left,y=Number.isFinite(e.clientY)?e.clientY:rect.bottom;
+    const quote='<h3>선택한 '+(word?'단어':'문장')+'</h3><blockquote>'+view.esc(text)+'</blockquote>';
+    show(x,y,quote+'<button id="trace-selection">'+(word?'단어 뜻·문맥 확인':'문장 유형·출처 확인')+'</button><p class="trace-note">'+
+      (context.scope==='page_excerpt'?'선택한 글과 주변 문맥을 분석합니다. 기사 전체 분석이 아닙니다.':'선택한 글과 기사 본문을 분석합니다.')+' 버튼을 누르면 설정된 분석 서버로 전송합니다.</p>');
+    shadow.querySelector('#trace-selection').onclick = async event => {
+      if(!event.isTrusted) return;
+      show(x,y,quote+'<p>'+(word?'단어 뜻과 문맥을 확인하는 중입니다.':'선택 문장의 출처를 분석하는 중입니다.')+'</p>');
       try {
-        const result = await send('NEWSCHECK_SELECTION',{...payload,selected_text:text,
-          surrounding_text:payload.page_text.slice(Math.max(0,index-250),index+text.length+250)});
-        if(run === sequence) show(x,y,view.renderSelection(result));
-      } catch(error) { if(run === sequence) show(x,y,'<p>' + view.esc(error.message) + '</p>'); }
+        const result = await send(word?'NEWSCHECK_WORD':'NEWSCHECK_SELECTION',{...payload,selected_text:text,
+          surrounding_text:context.surrounding,context_scope:context.scope});
+        if(run === sequence) show(x,y,word?view.renderWord(result):view.renderSelection(result));
+      } catch(error) { if(run === sequence) show(x,y,quote+'<p>' + view.esc(error.message) + '</p>'); }
     };
-  });
+  }
+  document.addEventListener('mouseup',selected,true);
+  document.addEventListener('keyup',e=>{if(e.key==='Shift' || e.key.startsWith('Arrow')) selected(e);},true);
   // Do not treat the click ending the selecting gesture as an outside dismissal.
   document.addEventListener('mousedown', () => { selectionOpenedThisGesture = false; }, true);
   document.addEventListener('click', e => {

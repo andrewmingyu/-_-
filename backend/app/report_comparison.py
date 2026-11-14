@@ -1,5 +1,5 @@
 """Compare reporting content with paired quotations, never claim truth or support."""
-from .models import ReportComparisons
+from .models import ReportComparisons, ReportComparisonPoint
 
 
 ASPECT_LABELS = {
@@ -19,13 +19,14 @@ def comparison_material(row):
     return '', 'title_only'
 
 
-def apply_comparisons(reports, materials, article_text, output):
+def apply_comparisons(reports, materials, article_text, output, cited_report_ids=()):
     """IDs and BOTH literal quotations must match server-provided materials."""
     output = ReportComparisons.model_validate(output)
     by_id = {r.id: r for r in reports}
     for report in reports:
         report.comparison_status = 'insufficient'
         report.comparison_points = []
+        report.cited_by_article=report.id in cited_report_ids
     seen = set()
     for comparison in output.reports:
         report = by_id.get(comparison.report_id)
@@ -38,7 +39,14 @@ def apply_comparisons(reports, materials, article_text, output):
                 continue
             seen.add(key)
             if len(report.comparison_points) < 6:
-                report.comparison_points.append(point)
+                data=point.model_dump();status='none'
+                material_difference=(point.kind=='difference' and point.article_quote!=point.related_quote and point.aspect in ('event','actors','time','figures','attribution'))
+                if not material_difference or (point.review_kind=='citation_difference' and not report.cited_by_article):
+                    data['review_kind']='none'
+                elif point.review_kind!='none':
+                    shared=len(point.context_anchor)>=2 and point.context_anchor in point.article_quote and point.context_anchor in point.related_quote
+                    status='paired_excerpt' if report.comparison_basis=='body_excerpt' and shared else 'needs_confirmation'
+                report.comparison_points.append(ReportComparisonPoint(**data,review_status=status))
         if report.comparison_points:
             report.comparison_status = 'compared'
     for report in reports:

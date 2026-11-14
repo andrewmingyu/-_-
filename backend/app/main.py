@@ -3,10 +3,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from .clients import Gemini, Tavily
-from .models import AnalyzeRequest, ArticleAnalysis, Preview, SelectionRequest, SelectionAnalysis
+from .models import AnalyzeRequest, ArticleAnalysis, Preview, SelectionRequest, SelectionAnalysis, WordRequest, WordAnalysis
 from .service import Analyzer, ArticleInputError
 from .errors import ProviderError
 from .official import Dart
+from .words import WordExplainer
 
 app = FastAPI(title='뉴스체크 AI — 출처 추적', version='1.0.0')
 app.add_middleware(CORSMiddleware, allow_origin_regex=r'chrome-extension://[a-p]{32}',
@@ -38,7 +39,7 @@ async def run_analysis(request,preview=False):
 
 @app.get('/health')
 def health():
-    return {'status': 'ok', 'mode': analyzer.mode, 'schema_version': 'source-tracing-v1','data_version':'source-tracing-v1.7'}
+    return {'status': 'ok', 'mode': analyzer.mode, 'schema_version': 'source-tracing-v1','data_version':'source-tracing-v1.8'}
 
 
 @app.post('/api/articles/analyze', response_model=ArticleAnalysis)
@@ -72,3 +73,17 @@ async def selection(request: SelectionRequest):
         raise
     except Exception as exc:
         raise HTTPException(502, '선택 문장 출처 분석에 실패했습니다.') from exc
+
+
+@app.post('/api/words/explain',response_model=WordAnalysis)
+async def word(request:WordRequest):
+    try:
+        if not hasattr(analyzer,'words'):
+            analyzer.words=WordExplainer(analyzer.llm,analyzer.search,mode=analyzer.mode,ttl=analyzer.ttl)
+        return await analyzer.words.explain(request)
+    except ArticleInputError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    except ProviderError:
+        raise
+    except Exception as exc:
+        raise HTTPException(502,'단어 설명을 완료하지 못했습니다. 서버 설정과 연결을 확인해 주세요.') from exc

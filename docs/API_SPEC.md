@@ -1,4 +1,4 @@
-# API 명세 — source-tracing-v1 / 데이터 보완 1.7
+# API 명세 — source-tracing-v1 / 데이터 보완 1.8
 구현 기준: backend/app/main.py·models.py, newscheck 4/shared/types.ts.
 서버 자동 문서: http://127.0.0.1:8000/docs. 기계 판독 스키마: [api.schema.json](api.schema.json).
 모든 JSON은 UTF-8이고 Content-Type은 application/json이다.
@@ -11,10 +11,11 @@
 | POST /api/articles/analyze | AnalyzeRequest | ArticleAnalysis | 기사 전체 출처 분석 |
 | POST /api/preview | AnalyzeRequest | Preview | 같은 분석의 Hover 표현 |
 | POST /api/claims/check | SelectionRequest | SelectionAnalysis | 선택 문장 유형·출처 |
+| POST /api/words/explain | WordRequest | WordAnalysis | 단어의 사전/일반 의미와 문맥 설명 |
 
 health 응답:
 ```json
-{"status":"ok","mode":"mock","schema_version":"source-tracing-v1","data_version":"source-tracing-v1.7"}
+{"status":"ok","mode":"mock","schema_version":"source-tracing-v1","data_version":"source-tracing-v1.8"}
 ```
 
 ## 요청
@@ -169,7 +170,7 @@ SelectionAnalysis는 article_id, selected_text, is_demo, claims[], sources[], ca
 서버 인증·사용자별 quota·자동 backoff·Retry-After에 따른 자동 대기/재시도는 아직 없다. Retry-After 값의 파싱·응답 전달은 구현되어 있다. 외부 공개 배포 전에 제한 정책을 별도 구현한다.
 
 ## 추가 필드와 기본값 (기존 경로 유지)
-- schema_version은 source-tracing-v1, data_version 기본값은 source-tracing-v1.7이다. 기존 클라이언트의 기본 필드를 유지하고 추가 항목은 기본값으로 생략 입력을 허용한다.
+- schema_version은 source-tracing-v1, data_version 기본값은 source-tracing-v1.8이다. 기존 클라이언트의 기본 필드를 유지하고 추가 항목은 기본값으로 생략 입력을 허용한다.
 - ArticleContext: cited_links의 각 항목은 url/text/article_quote이며 기사에서 수집한 링크다. 직접 링크라도 검색에서 확인되지 않은 새 출처로 저장하지 않는다. quotations는 원문에 있는 인용, body_truncated는 잘림 여부다.
 - Claim/Mention/TimelineItem.article_span: start/end/quote, 정규화 page_text의 Unicode 문자 기준, 서버 산출.
 - EventInfo: description/article_quote/time/location. quote가 본문에 있고 time/location이 그 인용에 포함돼야 한다.
@@ -194,7 +195,23 @@ SelectionAnalysis는 article_id, selected_text, is_demo, claims[], sources[], ca
 ## 제목 설명·짧은 맥락 표현 (data_version 1.7)
 ArticleAnalysis.headline_explanation은 {meaning, reasons[]}이며 생략 시 빈 값으로 호환한다. meaning은 최대 600자, 이유는 최대 4개다. 각 이유는 text(독립적인 간결한 표현, 최대 240자), article_quote(실제 본문 연속 인용, 최대 2,000자), claim_ids, mention_ids, source_ids, article_span으로 구성한다.
 서버는 존재하지 않는 인용을 버리고 유효한 주장·근거 ID만 보존한다. source_ids는 연결된 실제 출처에서 서버가 채운다. 이유를 확인할 수 없으면 의미를 임의로 만들지 않고 빈 설명을 반환한다.
-TimelineItem에 label(최대 24자, 기본 빈 문자열), is_main_event(기본 false)를 추가하고 EventInfo에도 label을 추가한다. 날짜와 원문 description/article_quote는 보존한다. 서버는 유효한 사건 중 주요 사건 표시를 하나로 정리한다. API 경로·schema_version은 유지하며 응답·health·캐시의 data_version은 source-tracing-v1.7으로 통일한다.
+TimelineItem에 label(최대 24자, 기본 빈 문자열), is_main_event(기본 false)를 추가하고 EventInfo에도 label을 추가한다. 날짜와 원문 description/article_quote는 보존한다. 서버는 유효한 사건 중 주요 사건 표시를 하나로 정리한다. API 경로·schema_version은 유지하며 응답·health·캐시의 data_version은 source-tracing-v1.8으로 통일한다.
 
 ## 빠른 Preview (data_version 1.7)
 POST /api/preview는 완료된 전체 분석 캐시가 있으면 그 결과에서 응답을 만들고, 없으면 Gemini의 기사 추출까지만 수행한다. cold preview의 claims/major_evidence/sources는 빈 목록, search_status는 not_run이다. 이는 원출처 미발견이나 사실 확인이 아니다. 응답 필드는 호환성을 위해 유지한다. 이후 전체 분석과 같은 article_id/body_hash 및 추출 결과를 공유한다.
+
+## 클라이언트 표시 상태 (2026-11-14)
+sourceNotice()는 기존 응답에서 {level, icon, text, issues, incomplete, partial}을 도출한다. level은 clear/caution/unknown이며 issues는 {code,text,claim_ids,source_ids} 목록이다. 서버 응답 필드가 아니므로 기존 Pydantic·TypeScript API 계약과 JSON Schema는 변경하지 않는다. score/percent/factors는 생성하지 않는다. 서버의 unknown_fields와 neutral 날짜 안내는 보존하되 그것만으로 매체/기사의 낮은 신뢰 등급을 만들지 않는다.
+
+## 선택 문맥 범위·단어 API (2026-11-14)
+SelectionRequest/SelectionAnalysis에 context_scope=article|page_excerpt를 추가한다(기본 article, 이전 클라이언트 호환). page_excerpt는 기사 전체가 아니므로 전체 기사 인덱스로 저장하지 않는다. selected_text는 문장 2~3,000자이며 본문/발췌에 실제 포함되어야 한다.
+WordRequest는 AnalyzeRequest에 selected_text(단어 하나, 1~80자), surrounding_text(최대 6,000자), context_scope를 더한다. 단어와 인용은 실제 page_text에서 대조한다. 잘못된 선택은 422, 공급자 오류는 기존 구조/코드/재시도 정보를 사용한다.
+WordAnalysis 필드: word_id, selected_text, lemma, general_meaning, contextual_meaning, context_quote, dictionary_meaning, dictionary_status, dictionary_sources, context_scope, is_demo, pipeline_errors.
+dictionary_status는 found(원문 확보 및 인용 확인), search_only(검색 요약 인용만 확인), not_found(관련 뜻풀이 미확인), failed(검색 실패)다. dictionary_sources는 서버 발급 id·실제 검색 url·title·excerpt·basis(retrieved|search_snippet)만 포함한다. 미확인/실패 상태는 dictionary_meaning과 출처 목록을 비우며 general_meaning을 AI 설명으로 구분한다.
+예: 요청 {"url":"https://example.org/page","page_text":"협상이 실패하면 벼랑 끝에 몰릴 수 있다.","selected_text":"벼랑","surrounding_text":"협상이 실패하면 벼랑 끝에 몰릴 수 있다.","context_scope":"page_excerpt"}.
+출처 ID/URL 또는 문맥 인용을 생성해 채우지 않는다. API 키는 서버에서만 관리한다. 새 모델도 api.schema.json과 shared/types.ts에 반영한다.
+
+## 보도 충돌·인용 표현 재확인 필드 (2026-11-14)
+RelatedArticle에 cited_by_article(boolean, 기본 false), 비교 point에 review_kind(none|claim_conflict|citation_difference, 기본 none), context_anchor(최대 120자), review_status(none|needs_confirmation|paired_excerpt, 기본 none)를 추가한다. 기존 응답은 기본값으로 호환한다.
+Gemini 후보 ComparisonCandidatePoint에는 review_status가 없다. 서버만 최종 상태를 부여한다. paired_excerpt는 body_excerpt 범위와 양쪽 인용에 실제 포함된 2자 이상 공통 표현이 필요하다. citation_difference는 서버가 확인한 cited_by_article=true가 필수다. 그 외 자료 범위/맥락 부족은 needs_confirmation이다. common이나 focus/context/topic의 단순 차이는 재확인 경고로 승격하지 않는다.
+클라이언트 파생 issue는 report_ids와 severity=caution|review를 추가해 정확한 보도 링크와 이동을 제공한다. review가 하나라도 있으면 전체 표시 level=review이며 미완료는 별도로 함께 표시한다. 점수·확률·사실/거짓 응답 필드는 없다.

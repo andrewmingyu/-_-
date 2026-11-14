@@ -165,7 +165,7 @@ class Analyzer:
             metadata['url'] = normalize_url(request.url)
         return body_hash(json.dumps([normalize_url(request.url), body_hash(request.page_text),
             request.title, metadata, clean_context(request.article_context,request.page_text).model_dump(mode='json'),
-            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.7', focus], ensure_ascii=False))
+            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.8', focus], ensure_ascii=False))
 
     def lookup(self, article_id, url=None):
         url = normalize_url(url) if url is not None else None
@@ -412,7 +412,10 @@ class Analyzer:
                     'reports': [{'id': r.id, 'title': r.title, 'basis': r.comparison_basis,
                                  'text': report_materials[r.id]} for r in comparison_reports],
                 }, ReportComparisons)
-                apply_comparisons(comparison_reports, report_materials, request.page_text, comparisons)
+                cited_urls={normalize_url(link.url) for link in request.article_context.cited_links}
+                cited_urls.update(normalize_url(s.url) for s in sources if s.discovery=='article_cited' and s.original_status=='original_found')
+                apply_comparisons(comparison_reports, report_materials, request.page_text, comparisons,
+                    cited_report_ids={r.id for r in comparison_reports if normalize_url(r.url) in cited_urls})
             except Exception as exc:
                 record_error(exc, 'related_comparison', 'gemini')
                 search_errors.append('다른 보도와의 비교를 완료하지 못했습니다. 관련 기사 목록은 유지합니다.')
@@ -550,7 +553,14 @@ class Analyzer:
     async def selection(self, request):
         if request.selected_text not in request.page_text:
             raise ArticleInputError('선택 문장이 전달된 기사 본문에 없습니다.')
-        analysis = await self.analyze(AnalyzeRequest(**request.model_dump(exclude={'article_id', 'selected_text', 'surrounding_text'})))
+        if request.context_scope=='page_excerpt':
+            scoped=AnalyzeRequest(**request.model_dump(exclude={'article_id','selected_text','surrounding_text','context_scope'}))
+            scoped.article_context.body_truncated=True
+            analysis=await self.analyze(scoped,focus=request.selected_text)
+            return SelectionAnalysis(article_id=analysis.article_id,selected_text=request.selected_text,is_demo=analysis.is_demo,
+                claims=analysis.claims,sources=analysis.sources,caution=analysis.caution,pipeline_errors=analysis.pipeline_errors,
+                analysis_id=analysis.article_id,evidence_mentions=analysis.evidence_mentions,context_scope='page_excerpt')
+        analysis = await self.analyze(AnalyzeRequest(**request.model_dump(exclude={'article_id', 'selected_text', 'surrounding_text','context_scope'})))
         if request.article_id and request.article_id != analysis.article_id:
             raise ArticleInputError('현재 기사와 분석 ID가 다릅니다. 기사를 다시 분석해 주세요.')
         matches = [c for c in analysis.claims if c.original_text in request.selected_text]

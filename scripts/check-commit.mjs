@@ -4,7 +4,8 @@ import { execFileSync } from 'node:child_process';
 const root=process.cwd();
 const git=args=>execFileSync('git',['-c','safe.directory='+root,...args],{encoding:'utf8',maxBuffer:8*1024*1024});
 const staged=process.argv.includes('--staged');
-const files=[...new Set(git(staged?['diff','--cached','--name-only','--diff-filter=ACM','-z']:['ls-files','--cached','--others','--exclude-standard','-z']).split('\0').filter(Boolean))];
+const files=[...new Set(git(staged?['diff','--cached','--name-only','--diff-filter=ACM','-z']:['ls-files','--cached','--others','--exclude-standard','-z']).split('\0').filter(Boolean))]
+  .filter(name=>staged || fs.existsSync(path.resolve(root,name)));
 const findings=[];
 const patterns=[/\bgh[pousr]_[A-Za-z0-9]{20,}\b/,/\bgithub_pat_[A-Za-z0-9_]{30,}\b/,/\bAIza[0-9A-Za-z_-]{30,}\b/,/\bsk-(?:proj-)?[A-Za-z0-9_-]{24,}\b/,/\btvly-[A-Za-z0-9_-]{20,}\b/,/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/];
 for(const name of files){
