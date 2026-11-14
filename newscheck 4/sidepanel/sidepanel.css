@@ -379,3 +379,6 @@ button:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-
 .ncs-name { font-weight:700; }
 .ncs-score { font-weight:700; }
 .ncs-detail { color:var(--sub); }
+
+/* 주장 번호 표시 (주장 1, 주장 1의 근거) */
+.trace-badge.claim-no { background:var(--accent-soft); color:var(--accent-text); margin-right:4px; }
