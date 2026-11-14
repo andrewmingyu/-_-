@@ -37,6 +37,9 @@ try:
         assert full.json()['article_id']==preview.json()['article_id']==selected.json()['article_id']
         assert quick.json()['article_id']==full.json()['article_id']
         assert full.json()['sources']==selected.json()['sources']
-    print('Real HTTP mock smoke: health, article, Hover preview and selected sentence passed.')
+        word=client.post('/api/words/explain',json={'url':payload['url'],'page_text':'문맥 속 단어의 의미를 살펴봅니다.',
+            'selected_text':'단어','surrounding_text':'문맥 속 단어의 의미를 살펴봅니다.','context_scope':'page_excerpt'})
+        word.raise_for_status();assert word.json()['is_demo'] and word.json()['dictionary_status']=='not_found'
+    print('Real HTTP mock smoke: health, article, Hover, selection and word explanation passed.')
 finally:
     server.should_exit=True;thread.join(timeout=10);sock.close()

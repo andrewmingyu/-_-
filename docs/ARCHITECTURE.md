@@ -1,5 +1,5 @@
 # 시스템 구조와 데이터 흐름
-기준: 2026-11-12, source-tracing-v1 / data_version=source-tracing-v1.7, Chrome 확장 manifest 0.2.0. 현재 로컬 소스 기준이며 원격 main의 상태나 향후 설계와 구분한다.
+기준: 2026-11-12, source-tracing-v1 / data_version=source-tracing-v1.9, Chrome 확장 manifest 0.2.0. 현재 로컬 소스 기준이며 원격 main의 상태나 향후 설계와 구분한다.
 
 ## 처음 코드와 수정본의 구성 차이
 최초 업로드 de18984에는 newscheck 4/와 README만 있었다. 별도 Python 서버나 DB가 없고, 확장 프로그램 안에서 화면 처리와 외부 API 요청을 수행했다. background.js라는 이름은 Chrome 서비스 워커를 뜻하며 Python 백엔드 서버를 뜻하지 않는다.
@@ -125,7 +125,7 @@ LLM_MODEL, 스키마 버전, 선택 focus로 구성한다. 같은 키의 진행 
 클라이언트가 보내는 surrounding_text는 계약에 존재하지만 서버의 권위 있는 문맥은 page_text 전체이며 별도 외부 텍스트를 합치지 않는다.
 모드 mock도 동일 Analyzer에서 입력 기사·본문 해시를 사용하되 공급자만 MockLLM/MockSearch로 바꾼다. 정적 UI ?demo의 고정 fixture는 별도이다.
 워커 ArticleInputCache는 정규화 URL별 입력·analysis ID를 30초/최대 64건 기억하고 GET 기존 결과 조회 및 본문 SHA-256 검사를 통과한 경우에만 Hover에 재사용한다. 차가운 Hover의 HTML도 30초/64건·동시 fetch 중복 방지를 적용한다.
-서버 cache key는 ArticleContext·정규화 메타 URL·data_version=source-tracing-v1.7도 포함한다.
+서버 cache key는 ArticleContext·정규화 메타 URL·data_version=source-tracing-v1.8도 포함한다.
 
 ## 실패와 제한
 - 요청 스키마/본문/선택/분석 ID 오류: 422.
@@ -147,3 +147,21 @@ Extraction.headline_explanation → clean_extraction의 기사 인용·ID 검사
 
 ## Hover와 상세 분석의 단계 공유
 Analyzer._extract는 본문 이해 결과와 진행 중인 추출을 키별로 공유한다. Preview는 이 단계에서 반환하고 Tavily·DART·출처 검토를 호출하지 않는다. 전체 analyze는 같은 추출의 깊은 복사로 후속 검증을 진행한다. 완성된 분석은 기존 cache에만 저장하며 추출만 있는 ID의 GET 전체 결과 조회는 404다. 추출 임시 캐시는 TTL/128건 제한, refresh 우회, 전체 분석 종료 시 정리를 적용해 실패한 전체 분석의 재시도를 막지 않는다.
+
+## 점수 없는 출처 확인·주의 상태 (2026-11-14)
+서버의 출처 조사·주의사항 데이터를 클라이언트 sourceNotice()가 표시용 상태로 정리한다. 전체 기사와 자동 배지는 같은 규칙을 쓴다. 가중 점수/백분율/매체 평판 모델을 만들지 않으며 신규 네트워크 요청은 없다. traceSummary()의 주의 건수도 중복 제거한 같은 주의 목록을 센다. API 경로·data_version·캐시·Gemini/Tavily 호출 순서는 유지한다.
+
+## 일반 페이지 선택·단어 경로 (2026-11-14)
+일반 HTTP(S) 콘텐츠 스크립트 → shared/selection.js(단어 구분·실제 DOM 문맥) → NEWSCHECK_SELECTION 또는 NEWSCHECK_WORD → worker → FastAPI. 본문 밖 선택은 발췌 scope를 표시하고 기존 전체 기사 인덱스를 갱신하지 않는다. Hover 외부 페이지 수집 허용 목록은 그대로 유지한다.
+단어는 words.WordExplainer에서 사전 도메인 제한 Tavily 검색 → Gemini WordDraft → 검색 ID·인용/문맥 검증 → WordAnalysis로 반환한다. 별도 TTL/진행 요청 캐시를 사용하고 기사 전체 분석을 호출하지 않는다. mock 모드는 외부 네트워크를 호출하지 않는다.
+
+## 보도 재확인 경고 (2026-11-14)
+ComparisonCandidatePoint(LLM) → apply_comparisons(실제 자료/참조 대조) → ReportComparisonPoint(review_status 서버 부여) → sourceNotice → 패널·배지·주의 카드와 관련 기사 대조 이동이다. 현재 기사 인용 링크와 확인된 article_cited 원자료 URL을 인용 관계 확인에 사용한다. 캐시 버전은 source-tracing-v1.8이며 새 네트워크 단계는 추가하지 않는다.
+
+## 원격 main의 외신 기능 통합 (2026-11-14)
+기준 원격 main은 cd1794e(PR #8 외국기사 번역, PR #9 외신 검색/원문 대조/관련 기사 필터/작성일 추출)다. 내 기능의 보관 커밋은 bedc691이며 feat/source-caution-update에서 병합한다.
+외신/기관 도메인 검색, 영어 검색어·후속 보도 검색, 관련 기사 필터·정렬과 작성일 추출을 보존했다. 주장/근거의 한국어 번역과 비교 구절의 번역/차이 설명은 원문과 분리한다.
+사용자 선택에 따라 상단 ‘원문과 다른 점’ 카드를 유지하고 빨간 재확인 안내와 관련 기사 이동을 연결한다. 기존 6개 카드의 독립 토글·고정 선택·단어 API는 유지한다.
+공식 매체 도메인과 추정 번역의 단어 유사성은 원문 후보 선정에만 사용한다. 실제 인용 관계/원본 확인으로 자동 승격하지 않는다. 원문 후보는 상단 카드에서 ‘인용 관계 미확인’으로 구분하고 두 인용·AI 번역·차이 설명을 제공한다. 직접 링크 등 실제 연결 근거와 원자료 관찰이 확인될 때만 기존 출처 확인 로직을 적용한다.
+신뢰 지수·가중치(귀속 차이 3배 포함)는 사용하지 않는다. 서술 충돌의 빨강/요약 수준의 노랑은 기존 재확인 조건을 따른다. 원문 후보라는 이유만으로 빨강이 되거나 실제 인용 원본이 되지 않는다.
+두 브랜치가 각각 1.8을 사용했으므로 통합 후 data_version/health/캐시는 source-tracing-v1.9다. 서버 재시작 → npm run build → 확장 새로고침 → 기사 F5 → 다시 분석으로 적용한다.

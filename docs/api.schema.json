@@ -946,6 +946,16 @@
             "maxItems": 6,
             "title": "Comparison Points",
             "type": "array"
+          },
+          "cited_by_article": {
+            "default": false,
+            "title": "Cited By Article",
+            "type": "boolean"
+          },
+          "original_candidate": {
+            "default": false,
+            "title": "Original Candidate",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1018,6 +1028,32 @@
             ],
             "default": null,
             "title": "Explanation"
+          },
+          "review_kind": {
+            "default": "none",
+            "enum": [
+              "none",
+              "claim_conflict",
+              "citation_difference"
+            ],
+            "title": "Review Kind",
+            "type": "string"
+          },
+          "context_anchor": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Context Anchor",
+            "type": "string"
+          },
+          "review_status": {
+            "default": "none",
+            "enum": [
+              "none",
+              "needs_confirmation",
+              "paired_excerpt"
+            ],
+            "title": "Review Status",
+            "type": "string"
           }
         },
         "required": [
@@ -1397,7 +1433,7 @@
         "type": "string"
       },
       "data_version": {
-        "default": "source-tracing-v1.8",
+        "default": "source-tracing-v1.9",
         "title": "Data Version",
         "type": "string"
       },
@@ -1765,6 +1801,15 @@
         "default": "",
         "maxLength": 6000,
         "title": "Surrounding Text",
+        "type": "string"
+      },
+      "context_scope": {
+        "default": "article",
+        "enum": [
+          "article",
+          "page_excerpt"
+        ],
+        "title": "Context Scope",
         "type": "string"
       }
     },
@@ -2435,6 +2480,15 @@
         },
         "title": "Evidence Mentions",
         "type": "array"
+      },
+      "context_scope": {
+        "default": "article",
+        "enum": [
+          "article",
+          "page_excerpt"
+        ],
+        "title": "Context Scope",
+        "type": "string"
       }
     },
     "required": [
@@ -3103,7 +3157,7 @@
         "type": "string"
       },
       "data_version": {
-        "default": "source-tracing-v1.8",
+        "default": "source-tracing-v1.9",
         "title": "Data Version",
         "type": "string"
       },
@@ -3126,6 +3180,420 @@
       "search_status"
     ],
     "title": "Preview",
+    "type": "object"
+  },
+  "WordRequest": {
+    "$defs": {
+      "Article": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Publisher"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Author"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Published At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Updated At"
+          },
+          "event_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Event Time"
+          },
+          "event_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Event Location"
+          },
+          "author_profile_url": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "maxLength": 2083,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Author Profile Url"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "Article",
+        "type": "object"
+      },
+      "ArticleContext": {
+        "additionalProperties": false,
+        "properties": {
+          "cited_links": {
+            "items": {
+              "$ref": "#/$defs/ArticleLink"
+            },
+            "maxItems": 30,
+            "title": "Cited Links",
+            "type": "array"
+          },
+          "quotations": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Quotations",
+            "type": "array"
+          },
+          "body_truncated": {
+            "default": false,
+            "title": "Body Truncated",
+            "type": "boolean"
+          }
+        },
+        "title": "ArticleContext",
+        "type": "object"
+      },
+      "ArticleLink": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 500,
+            "title": "Text",
+            "type": "string"
+          },
+          "article_quote": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Article Quote",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "text"
+        ],
+        "title": "ArticleLink",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "url": {
+        "format": "uri",
+        "maxLength": 2083,
+        "minLength": 1,
+        "title": "Url",
+        "type": "string"
+      },
+      "title": {
+        "default": "",
+        "maxLength": 500,
+        "title": "Title",
+        "type": "string"
+      },
+      "page_text": {
+        "default": "",
+        "maxLength": 60000,
+        "title": "Page Text",
+        "type": "string"
+      },
+      "metadata": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Article"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "refresh": {
+        "default": false,
+        "title": "Refresh",
+        "type": "boolean"
+      },
+      "article_context": {
+        "$ref": "#/$defs/ArticleContext"
+      },
+      "selected_text": {
+        "maxLength": 80,
+        "minLength": 1,
+        "title": "Selected Text",
+        "type": "string"
+      },
+      "surrounding_text": {
+        "default": "",
+        "maxLength": 6000,
+        "title": "Surrounding Text",
+        "type": "string"
+      },
+      "context_scope": {
+        "default": "article",
+        "enum": [
+          "article",
+          "page_excerpt"
+        ],
+        "title": "Context Scope",
+        "type": "string"
+      }
+    },
+    "required": [
+      "url",
+      "selected_text"
+    ],
+    "title": "WordRequest",
+    "type": "object"
+  },
+  "WordAnalysis": {
+    "$defs": {
+      "DictionarySource": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "url": {
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "excerpt": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "basis": {
+            "enum": [
+              "retrieved",
+              "search_snippet"
+            ],
+            "title": "Basis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "title",
+          "excerpt",
+          "basis"
+        ],
+        "title": "DictionarySource",
+        "type": "object"
+      },
+      "PipelineError": {
+        "additionalProperties": false,
+        "properties": {
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider"
+          },
+          "retry_after_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Retry After Seconds"
+          }
+        },
+        "required": [
+          "phase",
+          "code",
+          "message"
+        ],
+        "title": "PipelineError",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "word_id": {
+        "title": "Word Id",
+        "type": "string"
+      },
+      "selected_text": {
+        "title": "Selected Text",
+        "type": "string"
+      },
+      "lemma": {
+        "title": "Lemma",
+        "type": "string"
+      },
+      "general_meaning": {
+        "title": "General Meaning",
+        "type": "string"
+      },
+      "contextual_meaning": {
+        "title": "Contextual Meaning",
+        "type": "string"
+      },
+      "context_quote": {
+        "title": "Context Quote",
+        "type": "string"
+      },
+      "dictionary_meaning": {
+        "title": "Dictionary Meaning",
+        "type": "string"
+      },
+      "dictionary_status": {
+        "enum": [
+          "found",
+          "search_only",
+          "not_found",
+          "failed"
+        ],
+        "title": "Dictionary Status",
+        "type": "string"
+      },
+      "dictionary_sources": {
+        "items": {
+          "$ref": "#/$defs/DictionarySource"
+        },
+        "title": "Dictionary Sources",
+        "type": "array"
+      },
+      "context_scope": {
+        "default": "article",
+        "enum": [
+          "article",
+          "page_excerpt"
+        ],
+        "title": "Context Scope",
+        "type": "string"
+      },
+      "is_demo": {
+        "title": "Is Demo",
+        "type": "boolean"
+      },
+      "pipeline_errors": {
+        "items": {
+          "$ref": "#/$defs/PipelineError"
+        },
+        "title": "Pipeline Errors",
+        "type": "array"
+      }
+    },
+    "required": [
+      "word_id",
+      "selected_text",
+      "lemma",
+      "general_meaning",
+      "contextual_meaning",
+      "context_quote",
+      "dictionary_meaning",
+      "dictionary_status",
+      "is_demo"
+    ],
+    "title": "WordAnalysis",
     "type": "object"
   }
 }

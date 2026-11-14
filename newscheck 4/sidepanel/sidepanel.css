@@ -360,29 +360,27 @@ button:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-
 @media (prefers-color-scheme: dark) { .trace-secondary_only { background:#5f56b8; } }
 
 
-/* 종합 신뢰 지수 */
-.ncs { padding:12px 14px; border-left:5px solid var(--muted); }
-.ncs-high { border-left-color:#1f9d55; }
-.ncs-mid { border-left-color:#d49a00; }
-.ncs-low { border-left-color:#d64545; }
-.ncs-hold { border-left-color:#8a8aa0; }
-.ncs-top { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
-.ncs-level { font-size:16px; font-weight:800; }
-.ncs-pct { font-size:20px; font-weight:800; }
-.ncs-bar { height:8px; border-radius:4px; background:var(--line); margin:8px 0; overflow:hidden; }
-.ncs-bar i { display:block; height:100%; background:var(--muted); }
-.ncs-high .ncs-bar i { background:#1f9d55; }
-.ncs-mid .ncs-bar i { background:#d49a00; }
-.ncs-low .ncs-bar i { background:#d64545; }
-.ncs-list { margin:6px 0 0; padding:0; list-style:none; font-size:12px; }
-.ncs-list li { display:grid; grid-template-columns:auto auto 1fr; gap:2px 8px; padding:3px 0; border-top:1px solid var(--line); }
-.ncs-name { font-weight:700; }
-.ncs-score { font-weight:700; }
-.ncs-detail { color:var(--sub); }
+/* 출처 확인·주의 상태: 색과 문구는 주의/조사 상태이며 사실·거짓 등급이 아니다. */
+.notice-card { padding:14px; border-left:5px solid var(--muted); }
+.notice-clear { border-left-color:#1f9d55; }
+.notice-caution { border-left-color:#d49a00; }
+.notice-unknown { border-left-color:#8a8aa0; }
+.notice-review { border-left-color:#d64545; }
+.review-text { color:#a82424; }
+.report-review { border-left:4px solid #d64545; padding:10px; background:#fff2f2; border-radius:8px; }
+.report-review h3 { color:#a82424; }
+.report-candidate { border-left:3px solid #d49a00; padding-left:10px; }
+@media (prefers-color-scheme:dark) {
+  .review-text,.report-review h3 { color:#ffb3b3; }
+  .report-review { background:#442222; }
+}
+.notice-level { font-size:15px; font-weight:800; margin:8px 0; }
+.notice-list { margin:8px 0; padding-left:20px; font-size:13px; }
+.notice-list li { margin:8px 0; overflow-wrap:anywhere; }
+.notice-incomplete { font-size:12px; color:var(--sub); overflow-wrap:anywhere; }
 
 /* 주장 번호 표시 (주장 1, 주장 1의 근거) */
 .trace-badge.claim-no { background:var(--accent-soft); color:var(--accent-text); margin-right:4px; }
-<<<<<<< HEAD
 .odiff-point { margin-top:10px; border-top:1px solid var(--line); }
 .odiff-point h3 { font-size:12.5px; margin:8px 0 6px; }
 .odiff-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -391,9 +389,8 @@ button:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-
 .odiff-pair blockquote { margin:6px 0 0; padding:0; border:0; font-size:12.5px; }
 .odiff-why { margin-top:8px; font-size:12.5px; line-height:1.55; }
 .odiff-why b { color:var(--sub); }
-=======
+@media(max-width:380px) { .odiff-pair { grid-template-columns:1fr; } }
 
 /* 외국어 기사의 AI 번역 */
 .translation { margin:6px 0; font-size:13px; line-height:1.6; }
 .translation .trace-badge { margin-right:4px; }
->>>>>>> origin/main

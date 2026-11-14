@@ -38,7 +38,13 @@ try {
   assert.equal(await page.locator('.demo-banner').count(),1);
   assert.equal(await page.locator('a[href*=".example"]').count(),0);
   const text=await page.locator('body').innerText();
-  assert.doesNotMatch(text,/신뢰도|거짓 또는 오류|다른 보도와 일치/);
+  assert.doesNotMatch(text,/신뢰도|거짓 또는 오류|다른 보도와 일치|종합 신뢰 지수|\d+점|\d+%/);
+  assert.equal(await page.locator('.notice-card').getAttribute('aria-label'),'출처 확인·주의 상태');
+  assert.equal(await page.locator('.notice-card').evaluate(el=>el.classList.contains('notice-caution')),true);
+  await page.locator('[data-notice-details]').click();
+  assert.equal(await page.locator('#details-cautions').isVisible(),true);
+  assert.equal(await toggles.nth(3).getAttribute('aria-expanded'),'true');
+  await page.locator('[data-toggle="cautions"]').click();
   await toggles.nth(3).click();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await fs.mkdir('.tools',{recursive:true});
@@ -111,6 +117,39 @@ try {
   // Exercise content-script events with deterministic server responses, not real API calls.
   const fixture=JSON.parse(await fs.readFile(path.join(root,'data/demo.json'),'utf8'));
   const origin='http://127.0.0.1:'+server.address().port;
+  const reviewPage=await browser.newPage({viewport:{width:440,height:900},colorScheme:'light'});
+  reviewPage.on('pageerror',e=>errors.push(e.message));
+  await reviewPage.goto(origin+'/sidepanel/sidepanel.html?demo');
+  await reviewPage.locator('[data-toggle="related"]').waitFor();
+  await reviewPage.evaluate(async fixture=>{
+    const {renderAnalysis}=await import('/shared/view.js');
+    const report=fixture.related_articles[0];
+    Object.assign(report,{title:'지원 규모를 다룬 다른 시연 보도',comparison_status:'compared',comparison_basis:'body_excerpt',cited_by_article:false,original_candidate:true,
+      comparison_points:[{kind:'difference',aspect:'figures',article_quote:'2027년 지원금은 올해보다 확대할 계획이라고 발표했다.',
+        related_quote:'2027년 지원금은 올해보다 축소할 계획이라고 발표했다.',review_kind:'claim_conflict',
+        context_anchor:'2027년 지원금',review_status:'paired_excerpt'}]});
+    renderAnalysis(document.getElementById('content'),fixture,new Set(['claims']));
+  },fixture);
+  assert.equal(await reviewPage.locator('.notice-review').count(),1);
+  assert.match(await reviewPage.locator('.notice-review').innerText(),/교차검증 필요/);
+  assert.match(await reviewPage.locator('.odiff').innerText(),/원문 후보 · 인용 관계 미확인/);
+  assert.match(await reviewPage.locator('.odiff').innerText(),/교차검증 필요/);
+  assert.doesNotMatch(await reviewPage.locator('.notice-review').innerText(),/왜곡했습니다|\d+점/);
+  await reviewPage.screenshot({path:'.tools/report-review-panel.png',fullPage:true});
+  await reviewPage.locator('.notice-card [data-report-review]').click();
+  const reviewReport=reviewPage.locator('#related-report-'+fixture.related_articles[0].id);
+  assert.equal(await reviewReport.getAttribute('open'),'');
+  assert.equal(await reviewPage.locator('#details-claims').isVisible(),true);
+  assert.match(await reviewReport.innerText(),/확대할 계획/);
+  assert.match(await reviewReport.innerText(),/축소할 계획/);
+  await reviewReport.screenshot({path:'.tools/report-review-detail.png'});
+  for(const width of [320,440]){
+    await reviewPage.setViewportSize({width,height:900});
+    assert.equal(await reviewPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  }
+  await reviewPage.emulateMedia({colorScheme:'dark'});
+  assert.equal(await reviewPage.locator('.report-review').first().isVisible(),true);
+  await reviewPage.close();
   const contentPage=await browser.newPage({viewport:{width:1000,height:900}});
   await contentPage.goto(origin+'/__popup-test.html');
   const selectedText=fixture.claims[0].original_text;
@@ -212,7 +251,7 @@ try {
   assert.equal(await startupPage.getByRole('alert').count(),0);
   await startupPage.close();
   assert.deepEqual(errors,[]);
-  console.log('Chrome headless: panel layout, independent cards, Hover/selection, three stale-message cases and invalidated initialization passed.');
+  console.log('Chrome headless: panel layout, cross-report red notice and quote navigation, independent cards, Hover/selection and invalidated-context handling passed.');
 }finally{
   await browser?.close();
   await new Promise(resolve=>server.close(resolve));

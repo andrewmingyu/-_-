@@ -109,7 +109,7 @@ def test_related_articles_include_english_news_results():
 BBC_TEXT = 'BBC는 이날 \'21세기 정치적 도박\'이라는 제목의 기사에서 문 대통령의 외교를 평가했다고 보도했다.'
 
 
-def test_foreign_original_is_linked_when_outlet_domain_and_title_match():
+def test_outlet_domain_and_estimated_title_match_only_create_an_original_candidate():
     class BbcLLM(LLM):
         async def generate(self, instruction, payload, schema):
             if schema is EnglishQuery:
@@ -135,11 +135,13 @@ def test_foreign_original_is_linked_when_outlet_domain_and_title_match():
     result = asyncio.run(Analyzer(BbcLLM(), BbcSearch()).analyze(req))
     bbc = [x for x in result.sources if 'bbc.com' in str(x.url)][0]
     other = [x for x in result.sources if 'guardian.ng' in str(x.url)][0]
-    assert bbc.original_status == 'original_found' and bbc.discovery == 'article_cited'
+    assert bbc.original_status == 'unknown' and bbc.discovery == 'external_found' and not bbc.mention_ids
+    assert result.related_articles[0].original_candidate is True
+    assert not result.related_articles[0].cited_by_article
     assert other.original_status == 'unknown' and not other.mention_ids
 
 
-def test_foreign_original_linked_by_translated_quote_when_title_differs():
+def test_translated_quote_similarity_does_not_confirm_an_original():
     class QLLM(LLM):
         async def generate(self, instruction, payload, schema):
             if schema is EnglishQuery:
@@ -167,11 +169,12 @@ def test_foreign_original_linked_by_translated_quote_when_title_differs():
     result = asyncio.run(Analyzer(QLLM(), QSearch()).analyze(req))
     bbc = [x for x in result.sources if 'bbc.com' in str(x.url)][0]
     blog = [x for x in result.sources if 'blog.example.com' in str(x.url)][0]
-    assert bbc.original_status == 'original_found' and bbc.mention_ids
+    assert bbc.original_status == 'unknown' and not bbc.mention_ids
+    assert result.related_articles[0].original_candidate is True
     assert blog.original_status == 'unknown' and not blog.mention_ids  # 매체 도메인이 아니면 본문이 같아도 연결하지 않는다
 
 
-def test_verified_original_goes_first_in_comparison_and_followup_search_runs():
+def test_original_candidate_goes_first_without_becoming_a_verified_source_and_followup_runs():
     from app.models import ReportComparisons
     seen = {}
 
@@ -207,7 +210,8 @@ def test_verified_original_goes_first_in_comparison_and_followup_search_runs():
     result = asyncio.run(Analyzer(OLLM(), search).analyze(req))
     urls = [str(r.url) for r in result.related_articles]
     assert 'bbc.com' in urls[0] and any('ohmynews.com' in u for u in urls)
-    assert seen['reports'][0]['is_original'] is True
+    assert seen['reports'][0]['is_original'] is False
+    assert seen['reports'][0]['is_original_candidate'] is True
     assert any('논란 정정 반박' in q for q in search.news)
 
 
@@ -245,3 +249,21 @@ def test_irrelevant_english_and_followup_rows_are_filtered():
     title = 'BBC "文대통령 잘되면 노벨상, 안되면 벼랑끝"'
     assert title_overlap({'title': '<조선>, BBC 보도 내용 알고도 왜곡했다', 'content': ''}, title)
     assert not title_overlap({'title': '이스라엘 총선 결과', 'content': '연정 협상'}, title)
+
+
+def test_similarity_does_not_replace_exact_citation_and_originality_evidence():
+    from app.models import Mention, ArticleContext, ArticleLink
+    mention=Mention(id='m1',claim_ids=['c1'],description=BBC_TEXT,article_quote=BBC_TEXT,source_label='BBC')
+    candidate={'id':'src_bbc','url':'https://www.bbc.com/news/x','title':'21st century political gamble',
+        'content':'BBC original publication','published_at':None,'retrieved_at':'2026-11-14T00:00:00Z','content_status':'retrieved'}
+    reviews=SourceReviews(sources=[{'source_id':'src_bbc','mention_ids':['m1'],'original_status':'original_found',
+        'facts':{'identity':{'excerpt':'BBC'},'originality':{'excerpt':'original publication'}}}])
+    # A predicted English title and exact source-property excerpts cannot establish the article citation.
+    missing_link=Analyzer.build_sources([mention],[candidate],reviews,english_titles=['21st century political gamble'],outlet_domains=['bbc.com'])[0]
+    assert missing_link.original_status=='unknown' and missing_link.discovery=='external_found'
+    context=ArticleContext(cited_links=[ArticleLink(url=candidate['url'],text='BBC',article_quote=BBC_TEXT)])
+    known=Analyzer.build_sources([mention],[candidate],reviews,article_context=context)[0]
+    assert known.original_status=='original_found' and known.discovery=='article_cited'
+    # A link proves the citation, but without source evidence it still does not prove originality.
+    linked_only=Analyzer.build_sources([mention],[candidate],SourceReviews(sources=[]),article_context=context)[0]
+    assert linked_only.discovery=='article_cited' and linked_only.original_status=='unknown'

@@ -1,4 +1,10 @@
-import type { SourceStatus, CautionStatus, Claim, ArticleAnalysis, AnalyzeRequest, ReportComparisonPoint, HeadlineExplanation, TimelineItem } from '../newscheck 4/shared/types.js';
+import type { SourceStatus, CautionStatus, Claim, ArticleAnalysis, AnalyzeRequest, ReportComparisonPoint, HeadlineExplanation, TimelineItem, WordRequest, WordAnalysis, SelectionRequest } from '../newscheck 4/shared/types.js';
+const wordRequest:WordRequest={url:'https://generic.example',selected_text:'핵',context_scope:'page_excerpt'};
+declare const wordResult:WordAnalysis;
+const dictionaryStatus:'found'|'search_only'|'not_found'|'failed'=wordResult.dictionary_status;
+// @ts-expect-error word explanations are not truth scores
+wordResult.score;
+const excerpt:SelectionRequest={url:'https://generic.example',selected_text:'선택한 문장입니다.',context_scope:'page_excerpt'};
 const status: SourceStatus = 'original_found';
 const caution: CautionStatus = 'unknown';
 // @ts-expect-error old truth verdicts are not part of this API

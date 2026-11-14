@@ -149,6 +149,11 @@ class Gemini:
 
 
 class Tavily:
+    async def search_dictionary(self,term):
+        from .words import DICTIONARY_HOSTS
+        return await self._request('search',{'query':term+' 사전 뜻','topic':'general','max_results':3,
+            'include_raw_content':True,'include_answer':False,'search_depth':'basic','include_domains':list(DICTIONARY_HOSTS)})
+
     async def _request(self, endpoint, payload):
         key = os.getenv('TAVILY_API_KEY')
         if not key:

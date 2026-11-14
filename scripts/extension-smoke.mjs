@@ -9,6 +9,8 @@ import {chromium} from 'playwright-core';
 const root = path.resolve('dist/newscheck');
 const fixture = JSON.parse(await fs.readFile(path.join(root, 'data/demo.json'), 'utf8'));
 const articleUrl = process.env.TEST_ARTICLE_URL || 'https://n.news.naver.com/mnews/article/001/0000000001';
+const genericUrl='https://generic.example/selection';
+const genericText='협상이 실패하면 벼랑 끝에 몰릴 수 있다는 비유입니다.';
 const title = '전기차 지원제도 검토에 관한 시연용 기사';
 const selected = fixture.claims[0].original_text;
 const bodyText = fixture.claims.map(c => c.original_text).join(' ').repeat(3);
@@ -16,7 +18,7 @@ const escape = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt
 const html = `<html><head><title>${title}</title><meta property="og:title" content="${title}"></head><body>
 <a id="hover-link" href="${articleUrl}">시연용 기사 제목</a><button id="outside" type="button">다른 영역</button><article><h1>${title}</h1>
 <div id="dic_area"><p id="selected">${escape(selected)}</p><p>${escape(bodyText)}</p></div></article></body></html>`;
-const counts = {analyze:0,lookup:0,selection:0};
+const counts = {analyze:0,lookup:0,selection:0,word:0};
 let analysis;
 let onSelectionRequest;
 const selectionReplies = [];
@@ -40,6 +42,8 @@ const server = http.createServer(async (req, res) => {
     counts.lookup++; return res.end(JSON.stringify(analysis));
   }
   if (req.url === '/api/claims/check') {
+    if(payload.context_scope==='page_excerpt')return res.end(JSON.stringify({article_id:'excerpt_fixture',is_demo:true,selected_text:payload.selected_text,
+      context_scope:'page_excerpt',claims:[],sources:[],caution:{status:'unknown',reasons:['시연용 문맥 분석']},pipeline_errors:[]}));
     counts.selection++;
     const reply = () => {
       if (!res.writableEnded) res.end(JSON.stringify({article_id:analysis.article_id,is_demo:true,selected_text:payload.selected_text,
@@ -48,6 +52,12 @@ const server = http.createServer(async (req, res) => {
     selectionReplies.push(reply);
     onSelectionRequest?.(reply);
     return;
+  }
+  if(req.url==='/api/words/explain') {
+    counts.word++;
+    return res.end(JSON.stringify({word_id:'word_fixture',selected_text:payload.selected_text,lemma:payload.selected_text,
+      general_meaning:'시연용 일반 의미',contextual_meaning:'시연용 문맥 설명',context_quote:payload.surrounding_text,
+      dictionary_meaning:'',dictionary_status:'not_found',dictionary_sources:[],context_scope:payload.context_scope,is_demo:true,pipeline_errors:[]}));
   }
   res.writeHead(404); res.end('{}');
 });
@@ -67,6 +77,7 @@ try {
   await context.route('**/*', route => {
     const url = route.request().url();
     if (url === articleUrl) return route.fulfill({contentType:'text/html; charset=utf-8', body:html});
+    if(url===genericUrl)return route.fulfill({contentType:'text/html; charset=utf-8',body:'<html><head><title>일반 페이지</title></head><body><p id="excerpt">'+genericText+'</p></body></html>'});
     if (url.startsWith(backendUrl + '/') || url.startsWith('chrome-extension://')) return route.continue();
     return route.abort();
   });
@@ -86,6 +97,21 @@ try {
   const payload = {url:articleUrl,title,page_text:(selected+' '+bodyText).replace(/\s+/g,' ').trim()};
   const response = await settings.evaluate(payload => chrome.runtime.sendMessage({type:'NEWSCHECK_ANALYZE',payload}), payload);
   assert.equal(response.ok, true, response.error);
+  const badge=await settings.evaluate(async ({data,articleUrl})=>{
+    const {badgeInfo}=await import(chrome.runtime.getURL('shared/summary.js'));
+    const {markHeadline}=await import(chrome.runtime.getURL('lib/extract.js'));
+    const info=badgeInfo(data), tabs=await chrome.tabs.query({});
+    const tab=tabs.find(tab=>tab.url===articleUrl);
+    if(!tab)throw new Error('Article tab not found');
+    await chrome.scripting.executeScript({target:{tabId:tab.id},func:markHeadline,args:[data.article.title,info]});
+    return info;
+  },{data:response.data,articleUrl});
+  assert.equal(await page.locator('#newscheck-badge-host .chip').innerText(),badge.label);
+  await page.locator('#newscheck-badge-host .chip').click();
+  const badgeText=await page.locator('#newscheck-badge-host .pop').innerText();
+  assert.doesNotMatch(badgeText,/\d+점|\d+%|신뢰 높음|종합 신뢰 지수/);
+  assert.ok(badgeText.includes(badge.lines[0]));
+  await page.keyboard.press('Escape');
   await page.locator('#hover-link').hover();
   const popup = page.locator('#__newscheck_popup');
   await popup.locator('.body').filter({hasText:'핵심 요약'}).waitFor({state:'visible',timeout:10000});
@@ -145,8 +171,31 @@ try {
   await page.mouse.move(1000,780);
   await page.waitForTimeout(350);
   assert.equal(await popup.locator('.box').isVisible(),false,'Hover must still close on pointer leave');
+  const generic=await context.newPage();
+  await generic.goto(genericUrl);await generic.locator('#__newscheck_popup').waitFor({state:'attached'});
+  const genericPopup=generic.locator('#__newscheck_popup');
+  await generic.evaluate(()=>{
+    const range=document.createRange();range.selectNodeContents(document.querySelector('#excerpt'));
+    getSelection().removeAllRanges();getSelection().addRange(range);
+    document.querySelector('#excerpt').dispatchEvent(new MouseEvent('mouseup',{bubbles:true,clientX:80,clientY:80}));
+  });
+  assert.ok((await genericPopup.locator('.body').innerText()).includes(genericText));
+  await genericPopup.locator('#trace-selection').click();
+  await genericPopup.locator('.body').filter({hasText:'문장 유형과 출처'}).waitFor();
+  assert.ok((await genericPopup.locator('.body').innerText()).includes(genericText));
+  await generic.keyboard.press('Escape');
+  await generic.evaluate(()=>{
+    const node=document.querySelector('#excerpt').firstChild,index=node.textContent.indexOf('벼랑'),range=document.createRange();
+    range.setStart(node,index);range.setEnd(node,index+2);getSelection().removeAllRanges();getSelection().addRange(range);
+    document.querySelector('#excerpt').dispatchEvent(new MouseEvent('mouseup',{bubbles:true,clientX:80,clientY:80}));
+  });
+  await genericPopup.locator('#trace-selection').filter({hasText:'단어 뜻·문맥 확인'}).click();
+  await genericPopup.locator('.body').filter({hasText:'이 문맥에서의 의미'}).waitFor();
+  assert.match(await genericPopup.locator('.body').innerText(),/사전 뜻풀이 미확인/);
+  assert.equal(counts.word,1);assert.equal(counts.analyze,1,'Word explanation must not rerun whole-article analysis');
+  await genericPopup.screenshot({path:'.tools/generic-word-selection.png'});
   assert.deepEqual(errors, []);
-  console.log('Actual MV3 extension passed at ' + new URL(articleUrl).hostname + ': Hover leave unchanged, pinned selection during delayed HTTP and link hover, outside dismissal, late-response guard. No live APIs.');
+  console.log('Actual MV3 extension passed at ' + new URL(articleUrl).hostname + ': existing Hover/pinned selection, generic-site selected sentences and word explanations. No live APIs.');
 } finally {
   selectionReplies.forEach(reply=>reply());
   await context?.close();

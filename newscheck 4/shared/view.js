@@ -1,4 +1,4 @@
-import { traceSummary, TRACE_NOTE, credibility, CRED_NOTE } from './summary.js';
+import { traceSummary, TRACE_NOTE, sourceNotice, NOTICE_NOTE, reportReviewPoints } from './summary.js';
 
 export const SOURCE_LABELS = { original_found: '원본 자료 확인', secondary_only: '재인용 자료만 확인', source_not_found: '원출처를 찾지 못함', unknown: '확인에 필요한 정보 부족' };
 export const CAUTION_LABELS = { caution: '주의사항 표시 필요', none_identified: '현재 별도 주의사항을 발견하지 못함', unknown: '출처 분석 정보 부족' };
@@ -49,6 +49,7 @@ function claimTags(a, ids) {
   return nums.length ? nums.map(n => '<span class="trace-badge claim-no">주장 ' + n + '의 근거</span>').join('') : '<span class="trace-badge">연결된 주장 없음</span>';
 }
 function cautionContent(a, detailed) {
+  const notice=sourceNotice(a);
   const key = text => String(text).replace(/\s+/g,' ').trim().replace(/[.!。]+$/,'').trim();
   const boilerplate = new Set([
     '확보한 출처 정보에서 별도의 주의사항을 발견하지 못했습니다. 주장 진위의 판정은 아닙니다.',
@@ -66,7 +67,10 @@ function cautionContent(a, detailed) {
     for (const field of source.unknown_fields) missing.add(FACT_LABELS[field] || field);
   }
   // Merge duplicate explanations without losing source/claim references or reasons lacking details.
-  for (const item of [...(a.caution.details || []), ...a.caution.reasons.map(reason=>({reason}))]) {
+  const missingRows=[...(a.caution.details || []),...a.caution.reasons.map(reason=>({reason}))]
+    .filter(row=>row.reason.startsWith('출처 속성을 확인하지 못했습니다:'));
+  const noticeRows=(notice?.issues || []).map(item=>({...item,reason:item.text}));
+  for (const item of [...noticeRows,...missingRows]) {
     const text = String(item.reason).replace(/\s+/g,' ').trim(), normalized = key(text);
     if (!normalized) continue;
     // 외부 검색 자료에만 해당하는 주의 문구는 표시하지 않음 (기사와 연결된 자료 기준)
@@ -80,31 +84,38 @@ function cautionContent(a, detailed) {
     // The status badge and error section already explain these boilerplate messages.
     if (boilerplate.has(normalized)) continue;
     if (errorKeys.has(normalized) || (errors.length && text === '원출처 검색 요청이 실패하여 분석이 불완전합니다.')) continue;
-    const row = items.get(normalized) || {text,source_ids:new Set(),claim_ids:new Set()};
+    const row = items.get(normalized) || {text,source_ids:new Set(),claim_ids:new Set(),report_ids:new Set(),severity:item.severity};
     (item.source_ids || []).forEach(id=>row.source_ids.add(id));
     (item.claim_ids || []).forEach(id=>row.claim_ids.add(id));
+    (item.report_ids || []).forEach(id=>row.report_ids.add(id));
     items.set(normalized,row);
   }
-  const refs = (sourceIds,claimIds) => {
+  const refs = (sourceIds,claimIds,reportIds=new Set()) => {
     const labels = a.claims.flatMap((c,i)=>claimIds.has(c.id)?['주장 '+(i+1)]:[]).map(esc);
     labels.push(...cited.filter(s=>sourceIds.has(s.id)).map(s=>safeLink(s.url,s.title,a.is_demo)));
+    labels.push(...(a.related_articles || []).filter(r=>reportIds.has(r.id)).map(r=>safeLink(r.url,'비교 보도 원문',a.is_demo)+' <button class="link-btn" data-report-review="'+esc(r.id)+'">두 기사 대조 보기</button>'));
     return labels.length?'<p class="muted">관련: '+labels.join(' · ')+'</p>':'';
   };
   const rows = [...items.values()];
   const missingText = missing.size?'확인하지 못한 출처 정보: '+[...missing].join(', '):'';
   if (!detailed) return list([...rows.map(r=>r.text),...errors,...(missingText?[missingText]:[])].slice(0,3));
   const sections = [];
-  if (rows.length) sections.push('<div class="caution-group"><h3>주의가 필요한 내용</h3><ul>'+rows.map(r=>'<li class="caution-item">'+esc(r.text)+refs(r.source_ids,r.claim_ids)+'</li>').join('')+'</ul></div>');
+  if (rows.length) sections.push('<div class="caution-group"><h3>주의가 필요한 내용</h3><ul>'+rows.map(r=>'<li class="caution-item'+(r.severity==='review'?' review-text':'')+'">'+esc(r.text)+refs(r.source_ids,r.claim_ids,r.report_ids)+'</li>').join('')+'</ul></div>');
   if (missing.size) sections.push('<div class="caution-group"><h3>확인하지 못한 출처 정보</h3><p>'+esc([...missing].join(', '))+'</p>'+refs(missingSources,missingClaims)+'</div>');
   if (errors.length) sections.push('<div class="caution-group"><h3>분석 중 발생한 문제</h3>'+list(errors)+'</div>');
+  const pending=(notice?.incomplete || []).filter(reason=>!errorKeys.has(key(reason)));
+  if(pending.length)sections.push('<p class="notice-incomplete">확인 미완료: '+esc(pending.slice(0,2).join(' '))+'</p>');
   return sections.join('');
 }
 function cautions(a, detailed) {
-  return pill(CAUTION_LABELS[a.caution.status], a.caution.status === 'caution') + cautionContent(a,detailed) +
+  const level=sourceNotice(a)?.level;
+  const status=['caution','review'].includes(level)?'caution':level==='clear'?'none_identified':'unknown';
+  return pill(CAUTION_LABELS[status],status==='caution') + cautionContent(a,detailed) +
     '<p class="trace-note">주의사항의 존재나 부재는 주장 진위의 판정이 아닙니다.</p>';
 }
 function reportComparison(report,detailed) {
   const points=report.comparison_points || [];
+  const reviews=new Set(reportReviewPoints(report));
   const basis=pill(REPORT_BASES[report.comparison_basis] || REPORT_BASES.unknown);
   if(report.comparison_status!=='compared' || !points.length){
     const message=report.comparison_status==='failed'?'보도 비교를 완료하지 못했습니다. 원문을 직접 확인해 주세요.':report.comparison_status==='insufficient'?'확보한 범위에서 비교할 구절을 확인하지 못했습니다.':'아직 다른 보도와 비교하지 않은 결과입니다.';
@@ -117,7 +128,9 @@ function reportComparison(report,detailed) {
     }).join('')+'</div>';
   }
   return '<div class="report-comparison">'+basis+points.map(point=>
-    '<div class="comparison-point"><h3>'+esc(point.kind==='common'?'공통으로 다룬 내용':'표현·강조가 다른 부분')+' · '+esc(REPORT_ASPECTS[point.aspect])+'</h3><div class="report-pair"><div><b>현재 기사</b><blockquote>'+esc(point.article_quote)+'</blockquote><button class="link-btn" data-quote="'+esc(point.article_quote)+'">본문에서 보기</button></div><div><b>비교 보도</b><blockquote>'+esc(point.related_quote)+'</blockquote></div></div></div>'
+    '<div class="comparison-point'+(reviews.has(point)?point.review_status==='paired_excerpt'?' report-review':' report-candidate':'')+'"><h3>'+esc(reviews.has(point)?point.review_status==='paired_excerpt'?'🔴 교차검증 필요':'🟡 원문 확인 필요':point.kind==='common'?'공통으로 다룬 내용':'표현·강조가 다른 부분')+' · '+esc(REPORT_ASPECTS[point.aspect])+'</h3>'+
+    (reviews.has(point)?'<p>'+esc(point.review_kind==='citation_difference'?'인용 원문과 조건·표현에 차이가 있어 왜곡 여부를 확인해야 합니다.':'같은 사안에 대한 서술이 충돌할 가능성이 있어 두 보도의 맥락을 확인해야 합니다.')+'</p>'+(point.context_anchor?'<p class="trace-note">비교 기준: '+esc(point.context_anchor)+'</p>':'')+'<p class="trace-note">AI가 찾은 재확인 후보입니다. 어느 기사가 사실인지 판정한 결과가 아닙니다.</p>':'')+
+    '<div class="report-pair"><div><b>현재 기사</b><blockquote>'+esc(point.article_quote)+'</blockquote><button class="link-btn" data-quote="'+esc(point.article_quote)+'">본문에서 보기</button></div><div><b>'+(report.original_candidate?'원문 후보':'비교 보도')+'</b><blockquote>'+esc(point.related_quote)+'</blockquote>'+(point.related_quote_ko?'<p class="translation"><span class="trace-badge">AI 번역</span> '+esc(point.related_quote_ko)+'</p>':'')+'</div></div>'+(point.explanation?'<p class="odiff-why"><b>무엇이 달라졌나요?</b> '+esc(point.explanation)+'</p>':'')+'</div>'
   ).join('')+'</div>';
 }
 function summaryLines(value) {
@@ -171,7 +184,7 @@ function relatedList(items,demo,detailed=false) {
   if(!items.length)return '<p class="muted">관련 기사 없음</p>';
   const row=(report,link)=>'<span class="related-press" title="'+esc(report.publisher || '언론사 미확인')+'">'+esc(report.publisher || '언론사 미확인')+'</span><span class="related-title" title="'+esc(report.title)+'">'+(link?safeLink(report.url,report.title,demo):esc(report.title))+'</span><span class="related-date" title="'+esc(report.published_at || '작성일 미확인')+'">'+esc(report.published_at?compactDate(report.published_at).slice(0,10):'날짜 미확인')+'</span>';
   if(!detailed)return '<ul class="related-list">'+items.map(report=>'<li class="related-row">'+row(report,true)+'</li>').join('')+'</ul>';
-  return '<div class="related-details">'+items.map(report=>'<details class="report-detail"><summary class="related-row">'+row(report,false)+'<span class="report-open" aria-hidden="true">⌄</span></summary><div class="report-body"><p>'+safeLink(report.url,'원문 기사 열기',demo)+'</p>'+reportComparison(report,true)+'<p class="muted">'+esc(report.independence)+'</p></div></details>').join('')+'</div><p class="trace-note">공통 보도는 사실 확인을 뜻하지 않으며 표현 차이만으로 어느 쪽이 맞는지 판단하지 않습니다.</p>';
+  return '<div class="related-details">'+items.map(report=>'<details class="report-detail"'+(report.id?' id="related-report-'+esc(report.id)+'"':'')+'><summary class="related-row">'+row(report,false)+'<span class="report-open" aria-hidden="true">⌄</span></summary><div class="report-body"><p>'+safeLink(report.url,'원문 기사 열기',demo)+'</p>'+reportComparison(report,true)+'<p class="muted">'+esc(report.independence)+'</p></div></details>').join('')+'</div><p class="trace-note">공통 보도는 사실 확인을 뜻하지 않으며 표현 차이만으로 어느 쪽이 맞는지 판단하지 않습니다.</p>';
 }
 export function sectionData(a) {
   const article = a.article;
@@ -213,23 +226,29 @@ function sectionMarkup(a,s,expanded) {
   return '<section class="card analysis-section'+(s.id==='metadata'?' compact-metadata':'')+'" data-section="'+s.id+'"><div class="section-heading"><h2>'+s.title+'</h2><button type="button" data-toggle="'+s.id+'" aria-label="'+s.title+' '+(expanded.has(s.id)?'접기':'자세히 보기')+'" aria-expanded="'+expanded.has(s.id)+'" aria-controls="details-'+s.id+'">'+(expanded.has(s.id)?'접기 ∧':'자세히 보기 ›')+'</button></div>'+status+'<div id="summary-'+s.id+'"'+(expanded.has(s.id)?' hidden':'')+'>'+s.summary+'</div><div id="details-'+s.id+'"'+(!expanded.has(s.id)?' hidden':'')+'>'+s.details+'</div></section>';
 }
 
-function credStrip(a) {
-  const c = credibility(a);
-  if (!c) return '';
-  const rows = c.factors.map(f => '<li><span class="ncs-name">' + esc(f.label) + '</span><span class="ncs-score">' + f.score + '점</span><span class="ncs-detail">' + esc(f.detail) + '</span></li>').join('');
-  const skipped = c.unmeasured.length ? '<p class="trace-note">계산에서 제외: ' + esc(c.unmeasured.join(', ')) + '</p>' : '';
-  return '<section class="card ncs ncs-' + c.level + '" aria-label="종합 신뢰 지수"><div class="ncs-top"><span class="ncs-level">' + c.icon + ' ' + esc(c.text) + '</span>' +
-    (c.percent === null ? '' : '<span class="ncs-pct">' + c.percent + '%</span>') + '</div>' +
-    (c.percent === null ? '' : '<div class="ncs-bar" role="img" aria-label="신뢰 지수 ' + c.percent + '퍼센트"><i style="width:' + c.percent + '%"></i></div>') +
-    '<p class="trace-headline">' + esc(c.hint) + '</p><ul class="ncs-list">' + rows + '</ul>' + skipped +
-    '<p class="trace-note">사진 자료의 날짜는 읽지 못해 반영하지 않았어요.</p><p class="trace-note">' + esc(CRED_NOTE) + '</p></section>';
+function noticeStrip(a) {
+  const notice=sourceNotice(a);
+  if(!notice) return '';
+  const rows=notice.issues.slice(0,3).map(item=>{
+    const claims=item.claim_ids.map(id=>'주장 '+(a.claims.findIndex(c=>c.id===id)+1));
+    const sources=item.source_ids.map(id=>a.sources.find(s=>s.id===id)).filter(Boolean);
+    const refs=[...claims.map(esc),...sources.map(s=>safeLink(s.url,s.title,a.is_demo))];
+    refs.push(...(item.report_ids || []).map(id=>a.related_articles.find(r=>r.id===id)).filter(Boolean).map(r=>safeLink(r.url,'비교 보도 원문',a.is_demo)+' <button class="link-btn" data-report-review="'+esc(r.id)+'">두 기사 대조 보기</button>'));
+    return '<li'+(item.severity==='review'?' class="review-text"':'')+'>'+esc(item.text)+(refs.length?'<p class="muted">관련: '+refs.join(' · ')+'</p>':'')+'</li>';
+  }).join('');
+  return '<section class="card notice-card notice-'+notice.level+'" aria-label="출처 확인·주의 상태">'+
+    '<h2>출처 확인·주의 상태</h2><p class="notice-level">'+notice.icon+' '+esc(notice.text)+'</p>'+
+    (rows?'<ul class="notice-list">'+rows+'</ul>':'')+
+    (notice.incomplete.length?'<p class="notice-incomplete">'+(notice.issues.length?'일부 확인 미완료: ':'')+esc(notice.incomplete.slice(0,2).join(' '))+'</p>':'')+
+    (notice.issues.length?'<button class="link-btn" data-notice-details>주의사항 자세히 보기'+(notice.issues.length>3?' · 추가 항목 있음':'')+'</button>':'')+
+    '<p class="trace-note">'+esc(NOTICE_NOTE)+'</p></section>';
 }
 
-// 기사가 인용한 원문(원본으로 확인된 출처)과 비교해 서술이 달라진 부분을 첫 화면에 바로 보여 준다.
+// 원본 확인 자료와 검색 후보를 명시적으로 구분하며 상단 비교 기능을 보존한다.
 function originalDiffs(a) {
   const trim = u => String(u).replace(/\/$/, '');
-  const originals = new Set((a.sources || []).filter(s => s.original_status === 'original_found').map(s => trim(s.url)));
-  return (a.related_articles || []).filter(r => r.comparison_status === 'compared' && originals.has(trim(r.url)))
+  const originals = new Set((a.sources || []).filter(s => s.discovery === 'article_cited' && s.original_status === 'original_found').map(s => trim(s.url)));
+  return (a.related_articles || []).filter(r => r.comparison_status === 'compared' && (r.original_candidate || originals.has(trim(r.url))))
     .map(r => ({ report: r, points: (r.comparison_points || []).filter(p => p.kind === 'difference') }))
     .filter(x => x.points.length);
 }
@@ -239,8 +258,8 @@ function diffCard(a) {
   if (!groups.length) return '';
   const total = groups.reduce((n, g) => n + g.points.length, 0);
   return '<section class="card odiff" aria-label="원문과 다른 점"><h2>원문과 다른 점 ' + total + '건</h2>' + groups.map(g =>
-    '<p class="trace-headline">기사가 인용한 원문 ' + safeLink(g.report.url, g.report.title, a.is_demo) + '과 비교해 서술이 달라진 부분이에요.</p>' +
-    g.points.map(p => '<div class="odiff-point"><h3>' + esc(REPORT_ASPECTS[p.aspect] || '표현') + '</h3><div class="odiff-pair"><div><b>현재 기사</b><blockquote>' + esc(p.article_quote) + '</blockquote></div><div><b>원문</b><blockquote>' + esc(p.related_quote) + '</blockquote>' + (p.related_quote_ko ? '<b>한국어 번역</b><blockquote>' + esc(p.related_quote_ko) + '</blockquote>' : '') + '</div></div>' + (p.explanation ? '<p class="odiff-why"><b>무엇이 달라졌나요?</b> ' + esc(p.explanation) + '</p>' : '') + '</div>').join('')
+    '<p class="trace-headline">'+(g.report.original_candidate?'원문 후보 · 인용 관계 미확인: ':'기사 인용 원본 확인 자료: ') + safeLink(g.report.url, g.report.title, a.is_demo) + '</p>' +
+    g.points.map(p => '<div class="odiff-point'+(reportReviewPoints(g.report).includes(p)&&p.review_status==='paired_excerpt'?' report-review':'')+'"><h3>'+(reportReviewPoints(g.report).includes(p)&&p.review_status==='paired_excerpt'?'🔴 교차검증 필요 · ':'') + esc(REPORT_ASPECTS[p.aspect] || '표현') + '</h3><div class="odiff-pair"><div><b>현재 기사</b><blockquote>' + esc(p.article_quote) + '</blockquote></div><div><b>'+(g.report.original_candidate?'원문 후보':'원문')+'</b><blockquote>' + esc(p.related_quote) + '</blockquote>' + (p.related_quote_ko ? '<b>AI 한국어 번역</b><blockquote>' + esc(p.related_quote_ko) + '</blockquote>' : '') + '</div></div>' + (p.explanation ? '<p class="odiff-why"><b>무엇이 달라졌나요?</b> ' + esc(p.explanation) + '</p>' : '') + '</div>').join('') + '<button class="link-btn" data-report-review="'+esc(g.report.id)+'">관련 기사 상세에서 대조 보기</button>'
   ).join('') + '<p class="trace-note">AI가 두 본문의 구절을 짝지어 찾은 차이예요. 어느 쪽이 맞는지는 판단하지 않으니 직접 확인해 주세요.</p></section>';
 }
 
@@ -261,7 +280,7 @@ function traceStrip(a) {
 export function renderAnalysis(container, a, expanded = new Set()) {
   const sections=sectionData(a);
   const summary=a.ui_state?'<p>'+esc(a.one_line_summary)+'</p>':'<ul class="summary-list">'+summaryLines(a.one_line_summary).map(line=>'<li>'+esc(line)+'</li>').join('')+'</ul>';
-  container.innerHTML = headlineCard(a,expanded) + (a.is_demo ? '<div class="demo-banner" role="status">시연용 예시 · 실제 기사나 실제 출처 분석 결과가 아닙니다.</div>' : '') + credStrip(a) + diffCard(a) + traceStrip(a) +
+  container.innerHTML = headlineCard(a,expanded) + (a.is_demo ? '<div class="demo-banner" role="status">시연용 예시 · 실제 기사나 실제 출처 분석 결과가 아닙니다.</div>' : '') + noticeStrip(a) + diffCard(a) + traceStrip(a) +
     '<div class="overview-grid"><div class="analysis-summary"><span>'+(a.ui_state==='loading'?'분석 중':a.ui_state==='error'?'분석 요청 실패':a.analysis_status==='partial'?'부분 분석':'출처 분석 완료')+'</span><h2>한 줄 요약</h2>'+summary+'</div>'+sectionMarkup(a,sections.find(s=>s.id==='metadata'),expanded)+'</div>'+errorList(a.pipeline_errors)+
     '<div class="analysis-grid">'+sections.filter(s=>s.id!=='metadata').map(s=>sectionMarkup(a,s,expanded)).join('')+'</div>'+
     '<div class="card"><h2>제목과 본문 표현의 차이</h2><p>' + esc(a.headline_difference) + '</p><p class="trace-note">' + esc(a.final_comment) + '</p><p class="muted">분석 시각: ' + esc(a.analyzed_at) + '</p></div>';
@@ -275,6 +294,22 @@ export function renderAnalysis(container, a, expanded = new Set()) {
     container.querySelector('#summary-' + id).hidden = expanded.has(id);
   };
   container.onclick = e => {
+    const reportJump=e.target.closest('[data-report-review]');
+    if(reportJump) {
+      const id=reportJump.dataset.reportReview;
+      if(!a.related_articles.some(r=>r.id===id))return;
+      setSectionOpen('related',true);
+      const target=container.ownerDocument.getElementById('related-report-'+id);
+      if(target){target.open=true;target.setAttribute('tabindex','-1');target.focus({preventScroll:true});target.scrollIntoView?.({behavior:'smooth',block:'start'});}
+      return;
+    }
+    if(e.target.closest('[data-notice-details]')) {
+      setSectionOpen('cautions',true);
+      const target=container.querySelector('[data-section="cautions"]');
+      target.setAttribute('tabindex','-1');target.focus({preventScroll:true});
+      target.scrollIntoView?.({behavior:'smooth',block:'start'});
+      return;
+    }
     const toggle=e.target.closest('[data-headline-toggle]');
     if(toggle){
       if(expanded.has('headline'))expanded.delete('headline');else expanded.add('headline');
@@ -318,6 +353,19 @@ export function renderPreview(p) {
     '<p class="trace-note">출처와 자세한 근거는 오른쪽 분석 패널에서 확인하세요.</p>';
 }
 export function renderSelection(r) {
-  return (r.is_demo ? '<p class="demo-banner">시연용 예시</p>' : '') + '<h3>문장 유형과 출처</h3>'+(r.analysis_id?'<p class="trace-note">'+(r.matched_claim_ids?.length?'기사의 핵심 주장 분석을 재사용했습니다.':'선택 문장을 별도로 분석했습니다.')+'</p>':'') + r.claims.map(c => '<p>' + pill(TYPE_LABELS[c.claim_type]) + ' ' + pill(SOURCE_LABELS[c.source_status]) + '</p><blockquote>' + esc(c.original_text) + '</blockquote>' + translationLine(c)).join('') +
+  return (r.is_demo ? '<p class="demo-banner">시연용 예시</p>' : '') + '<h3>선택한 문장</h3><blockquote>'+esc(r.selected_text)+'</blockquote>'+
+    (r.context_scope==='page_excerpt'?'<p class="trace-note">선택한 글과 주변 문맥 기준입니다. 기사 전체 분석이 아닙니다.</p>':'')+
+    '<h3>문장 유형과 출처</h3>'+(r.analysis_id?'<p class="trace-note">'+(r.matched_claim_ids?.length?'기사의 핵심 주장 분석을 재사용했습니다.':'선택 문장을 별도로 분석했습니다.')+'</p>':'') + r.claims.map(c => '<p>' + pill(TYPE_LABELS[c.claim_type]) + ' ' + pill(SOURCE_LABELS[c.source_status]) + '</p><blockquote>' + esc(c.original_text) + '</blockquote>' + translationLine(c)).join('') +
     r.sources.map(s => sourceSummary(s,r.is_demo)).join('') + pill(CAUTION_LABELS[r.caution.status],r.caution.status === 'caution') + decisionDetails(r.caution,r.sources,r.is_demo) + errorList(r.pipeline_errors) + '<p class="trace-note">출처 확인 상태이며 사실·거짓 판정이 아닙니다.</p>';
+}
+export function renderWord(r) {
+  const verified=['found','search_only'].includes(r.dictionary_status);
+  return (r.is_demo?'<p class="demo-banner">시연용 예시 · 실제 사전 조회가 아닙니다.</p>':'')+
+    '<h3>선택한 단어</h3><blockquote>'+esc(r.selected_text)+'</blockquote><p class="trace-note">표제어: '+esc(r.lemma)+'</p>'+
+    '<h3>'+(verified?'사전 자료의 의미':'일반적 의미 · AI 설명')+'</h3><p>'+esc(verified?r.dictionary_meaning:r.general_meaning)+'</p>'+
+    (!verified?'<p class="trace-note">'+(r.dictionary_status==='failed'?'사전 검색 실패':'사전 뜻풀이 미확인')+' · 사전에서 확인한 정의로 단정하지 않습니다.</p>':'')+
+    r.dictionary_sources.map(s=>'<p>'+safeLink(s.url,s.title,r.is_demo)+'</p><blockquote>'+esc(s.excerpt)+'</blockquote><p class="trace-note">'+(s.basis==='search_snippet'?'사전 검색 요약 기준 · 원문은 확인하지 못했습니다.':'확보한 사전 자료 기준')+'</p>').join('')+
+    '<h3>이 문맥에서의 의미</h3><p>'+esc(r.contextual_meaning || '주변 문맥이 부족하거나 인용을 확인하지 못해 의미를 특정하기 어렵습니다.')+'</p>'+
+    (r.context_quote?'<blockquote>'+esc(r.context_quote)+'</blockquote>':'')+errorList(r.pipeline_errors)+
+    '<p class="trace-note">문맥 설명은 AI의 해석이며 사실 여부나 출처 신뢰도 판정이 아닙니다.</p>';
 }

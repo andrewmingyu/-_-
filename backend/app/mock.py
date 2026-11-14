@@ -2,12 +2,17 @@
 import json
 import re
 from pathlib import Path
-from .models import Claim, EventInfo, Extraction, SourceReviews, TimelineItem, ReportComparisons, HeadlineExplanation
+from .models import Claim, EventInfo, Extraction, SourceReviews, TimelineItem, ReportComparisons, HeadlineExplanation, WordDraft
 
 FIXTURE = json.loads((Path(__file__).resolve().parents[2] / 'fixtures/mock_source_documents.json').read_text(encoding='utf-8'))
 
 class MockLLM:
     async def generate(self, instruction, payload, schema):
+        if schema is WordDraft:
+            context=payload['context']
+            at=context.find(payload['selected_text'])
+            return WordDraft(lemma=payload['selected_text'],general_meaning='시연 모드에서는 실제 사전 뜻을 조회하지 않습니다.',
+                contextual_meaning='시연용 문맥 설명입니다. 선택한 단어가 아래 문맥에 포함되어 있습니다.',context_quote=context[max(0,at-45):at+len(payload['selected_text'])+45])
         if schema is ReportComparisons:
             reports = []
             for report in payload['reports']:

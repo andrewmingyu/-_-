@@ -343,10 +343,10 @@ export function markHeadline(title, info) {
     ':host{all:initial}',
     '*{box-sizing:border-box;font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif}',
     '.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #5b4cf0;background:#eeecfe;color:#3b2fb8;border-radius:999px;padding:4px 10px;font-size:12px;line-height:1.2;font-weight:700;cursor:pointer}',
-    '.chip.lvl-high{border-color:#1f9d55;background:#e6f6ec;color:#146c3a}',
-    '.chip.lvl-mid{border-color:#d49a00;background:#fff6d6;color:#7a5800}',
-    '.chip.lvl-low{border-color:#d64545;background:#fde8e8;color:#9b1c1c}',
-    '.chip.lvl-hold{border-color:#8a8aa0;background:#f0f0f5;color:#4a4a5c}',
+    '.chip.lvl-clear{border-color:#1f9d55;background:#e6f6ec;color:#146c3a}',
+    '.chip.lvl-caution{border-color:#d49a00;background:#fff6d6;color:#7a5800}',
+    '.chip.lvl-unknown{border-color:#8a8aa0;background:#f0f0f5;color:#4a4a5c}',
+    '.chip.lvl-review{border-color:#d64545;background:#fde8e8;color:#9b1c1c}',
     '.chip .warn{color:#b25e00;background:#fff1dc;border-radius:999px;padding:1px 7px;font-weight:700}',
     '.pop{position:absolute;left:0;top:calc(100% + 8px);z-index:2147483647;width:300px;max-width:80vw;background:#fff;color:#1b1b28;border:1px solid #e7e7f0;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:12px 14px;font-size:13px;line-height:1.55;text-align:left;font-weight:400}',
     '.pop[hidden]{display:none}',
@@ -358,9 +358,9 @@ export function markHeadline(title, info) {
   ].join('');
   const chip = document.createElement('button');
   chip.type = 'button';
-  chip.className = 'chip' + (/^(high|mid|low|hold)$/.test(String(info.level)) ? ' lvl-' + info.level : '');
+  chip.className = 'chip' + (/^(clear|caution|unknown|review)$/.test(String(info.level)) ? ' lvl-' + info.level : '');
   chip.setAttribute('aria-expanded', 'false');
-  chip.setAttribute('aria-label', '뉴스체크 근거 확인 현황');
+  chip.setAttribute('aria-label', '뉴스체크 출처 확인·주의 상태');
   const label = document.createElement('span');
   label.textContent = String(info.label || '근거 확인 현황');
   chip.appendChild(label);
@@ -374,7 +374,7 @@ export function markHeadline(title, info) {
   pop.className = 'pop';
   pop.hidden = true;
   const add = (tag, cls, text) => { const el = document.createElement(tag); if (cls) el.className = cls; el.textContent = String(text); pop.appendChild(el); return el; };
-  add('h4', '', '뉴스체크 · 근거 확인 현황');
+  add('h4', '', '뉴스체크 · 출처 확인·주의 상태');
   add('p', 'head', info.headline || '');
   if (Array.isArray(info.lines) && info.lines.length) {
     const ul = document.createElement('ul');

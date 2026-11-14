@@ -9,7 +9,7 @@ chrome.runtime.onStartup?.addListener(panel);
 export const articleInputs=new ArticleInputCache();
 const pages=new Map(),fetches=new Map();
 let requestOrder=0;
-const allowed=new Set(['NEWSCHECK_ANALYZE','NEWSCHECK_PREVIEW','NEWSCHECK_SELECTION','NEWSCHECK_FETCH_ARTICLE','NEWSCHECK_GET_CACHED_ARTICLE']);
+const allowed=new Set(['NEWSCHECK_ANALYZE','NEWSCHECK_PREVIEW','NEWSCHECK_SELECTION','NEWSCHECK_WORD','NEWSCHECK_FETCH_ARTICLE','NEWSCHECK_GET_CACHED_ARTICLE']);
 function articleUrl(value) {
   const url=new URL(normalizeArticleUrl(value));
   if(!isSupportedArticleUrl(url.href))throw new Error('지원하지 않는 기사 링크입니다.');
@@ -45,16 +45,16 @@ export async function dispatchMessage(message,sender) {
     if(analysis.body_hash!==hash){articleInputs.delete(url);return {payload:null};}
     return {payload:entry.payload,analysis};
   }
-  const path={NEWSCHECK_ANALYZE:'/api/articles/analyze',NEWSCHECK_PREVIEW:'/api/preview',NEWSCHECK_SELECTION:'/api/claims/check'}[message.type];
+  const path={NEWSCHECK_ANALYZE:'/api/articles/analyze',NEWSCHECK_PREVIEW:'/api/preview',NEWSCHECK_SELECTION:'/api/claims/check',NEWSCHECK_WORD:'/api/words/explain'}[message.type];
   if(!path)throw new Error('지원하지 않는 요청입니다.');
   const revision=++requestOrder;
   let payload=message.payload;
-  if(message.type==='NEWSCHECK_SELECTION' && !payload.article_id){
+  if(message.type==='NEWSCHECK_SELECTION' && payload.context_scope!=='page_excerpt' && !payload.article_id){
     const entry=articleInputs.get(payload.url);
     if(entry && entry.payload.page_text===payload.page_text && JSON.stringify(entry.payload.metadata)===JSON.stringify(payload.metadata) && JSON.stringify(entry.payload.article_context)===JSON.stringify(payload.article_context || {cited_links:[],quotations:[],body_truncated:false}))payload={...payload,article_id:entry.article_id};
   }
   const data=await requestAnalysis(path,payload);
-  articleInputs.put(message.payload,data.article_id,revision);
+  if(message.type!=='NEWSCHECK_WORD' && payload.context_scope!=='page_excerpt')articleInputs.put(message.payload,data.article_id,revision);
   return data;
 }
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{

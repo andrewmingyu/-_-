@@ -138,7 +138,7 @@ def text_matches(quotes, content):
 
 
 def best_original(candidates, outlet_domains, titles, quotes):
-    """매체 공식 도메인 후보 중 제목·본문이 가장 잘 맞는 하나만 고른다(같은 매체의 다른 기사가 함께 연결되지 않게)."""
+    """공식 도메인의 제목·본문 유사성이 가장 높은 원문 후보를 고른다. 실제 인용/원본 확인은 별도다."""
     best, best_score = None, 0.0
     for c in candidates:
         host = (urlsplit(c['url']).hostname or '').lower()
@@ -247,7 +247,7 @@ class Analyzer:
             metadata['url'] = normalize_url(request.url)
         return body_hash(json.dumps([normalize_url(request.url), body_hash(request.page_text),
             request.title, metadata, clean_context(request.article_context,request.page_text).model_dump(mode='json'),
-            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.8', focus], ensure_ascii=False))
+            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.9', focus], ensure_ascii=False))
 
     def lookup(self, article_id, url=None):
         url = normalize_url(url) if url is not None else None
@@ -531,25 +531,26 @@ class Analyzer:
             except Exception as exc:
                 record_error(exc,'related_search','tavily')
                 search_errors.append('관련 기사 검색이 실패했습니다. 원출처 검색 상태와는 별개입니다.')
-        # 매체 공식 도메인에서 확인된 원문은 관련 기사 맨 앞에 두어, 기사가 원문을 어떻게 옮겼는지 비교하게 한다.
+        # 유사성으로 찾은 외신 자료는 후보일 뿐이다. 검증된 인용 관계와 분리해 비교 대상으로 보존한다.
         by_id = {c['id']: c for c in candidates.values()}
         original_ids = set()
-        # 이 기사에서 매체 도메인·제목/인용 일치로 확인한 후보만 대상으로 한다(LLM이 original_found로 본 모든 출처가 아님).
-        verified_id = best_original(list(candidates.values()), named_domains, english_titles, english_quotes)
-        for s in sources:
+        candidate_id = best_original(list(candidates.values()), named_domains, english_titles, english_quotes)
+        for s in sorted(sources, key=lambda s:s.id != candidate_id):
             cand = by_id.get(s.id)
-            if verified_id and s.id == verified_id and s.original_status == 'original_found' and s.mention_ids and cand and cand['content'] \
-                    and str(s.url) not in {str(r.url) for r in related}:
+            verified = s.discovery == 'article_cited' and s.original_status == 'original_found' and bool(s.mention_ids)
+            if cand and cand['content'] and s.id == candidate_id:
                 row = {'url': cand['url'], 'title': cand['title'], 'content': cand['snippet'], 'raw_content': cand['content']}
                 report_id = 'report_' + body_hash(cand['url'])[:16]
                 material, basis = comparison_material(row)
                 material = cand['content'][:16000]  # 원문은 결론 부분까지 비교하도록 더 길게 쓴다.
                 report_materials[report_id] = material
+                related = [r for r in related if normalize_url(r.url) != cand['url']]
                 related.insert(0, RelatedArticle(id=report_id, url=cand['url'], title=cand['title'] or cand['url'],
                     publisher=publisher_name(cand['url']) or urlsplit(cand['url']).hostname, published_at=cand['published_at'],
                     topic=request.title, summary=cand['snippet'][:400] or None, comparison_basis=basis,
-                    differences_summary='원문으로 확인된 자료(기사 본문 비교 전).'))
-                original_ids.add(report_id)
+                    original_candidate=not verified,
+                    differences_summary='원본 확인 자료(비교 전).' if verified else '원문 후보(인용 관계 미확인, 비교 전).'))
+                if verified:original_ids.add(report_id)
                 del related[5:]
                 break
         if related:
@@ -558,9 +559,13 @@ class Analyzer:
                 comparisons = await self.llm.generate(COMPARE_REPORTS, {
                     'body': request.page_text,
                     'reports': [{'id': r.id, 'title': r.title, 'basis': r.comparison_basis, 'is_original': r.id in original_ids,
+                                 'is_original_candidate': r.original_candidate,
                                  'text': report_materials[r.id]} for r in comparison_reports],
                 }, ReportComparisons)
-                apply_comparisons(comparison_reports, report_materials, request.page_text, comparisons)
+                cited_urls={normalize_url(link.url) for link in request.article_context.cited_links}
+                cited_urls.update(normalize_url(s.url) for s in sources if s.discovery=='article_cited' and s.original_status=='original_found')
+                apply_comparisons(comparison_reports, report_materials, request.page_text, comparisons,
+                    cited_report_ids={r.id for r in comparison_reports if normalize_url(r.url) in cited_urls})
             except Exception as exc:
                 record_error(exc, 'related_comparison', 'gemini')
                 search_errors.append('다른 보도와의 비교를 완료하지 못했습니다. 관련 기사 목록은 유지합니다.')
@@ -659,20 +664,12 @@ class Analyzer:
             if r.source_id not in by_id:
                 by_id[r.source_id] = r
         sources = []
-        best_id = best_original(candidates, outlet_domains, english_titles, english_quotes)
         for c in candidates:
             review = by_id.get(c['id'])
             facts = SourceFacts()
             mids = [m.id for m in mentions if any(normalize_url(link.url)==c['url'] and link.text in m.article_quote for link in (article_context.cited_links if article_context else []))]
             status = 'unknown'
-            # 기사가 인용한 외신 원문: 기사에 이름이 나온 매체의 공식 도메인이고, 페이지 제목이 영어 원제와 맞거나
-            # 본문이 기사 인용 문장(영어 번역)과 맞으면 연결한다.
-            verified = False
-            if c['id'] == best_id:
-                named = [m for m in mentions if any(urlsplit(c['url']).hostname.lower().endswith(d)
-                         for d in domains_for(f'{m.source_label or ""} {m.document_title or ""} {m.article_quote}')) or m.document_title]
-                mids += [m.id for m in (named or mentions)]
-                verified = True
+            # 공식 도메인/추정 번역의 단어 유사성만으로 기사 인용 또는 원본 확인으로 승격하지 않는다.
             if review:
                 facts = SourceFacts(**{k: v for k, v in review.facts.model_dump().items()
                     if v and v['excerpt'] in c['content']})
@@ -693,8 +690,6 @@ class Analyzer:
                     status = review.original_status
                     if status == 'original_found' and not facts.identity:
                         status = 'unknown'
-            if verified and status == 'unknown':
-                status = 'original_found'  # 매체 공식 도메인 + 제목 일치로 확인한 경우. 속성 미확인 항목은 아래에서 그대로 표시한다.
             decision, missing = source_decision(status, facts, next((allowed_mentions[i].source_kind for i in mids), 'unknown'), c['published_at'], reference_date)
             decision.details = [CautionDetail(reason=r,source_ids=[c['id']]) for r in decision.reasons]
             sources.append(Source(id=c['id'], url=c['url'], title=c['title'],
@@ -711,7 +706,14 @@ class Analyzer:
     async def selection(self, request):
         if request.selected_text not in request.page_text:
             raise ArticleInputError('선택 문장이 전달된 기사 본문에 없습니다.')
-        analysis = await self.analyze(AnalyzeRequest(**request.model_dump(exclude={'article_id', 'selected_text', 'surrounding_text'})))
+        if request.context_scope=='page_excerpt':
+            scoped=AnalyzeRequest(**request.model_dump(exclude={'article_id','selected_text','surrounding_text','context_scope'}))
+            scoped.article_context.body_truncated=True
+            analysis=await self.analyze(scoped,focus=request.selected_text)
+            return SelectionAnalysis(article_id=analysis.article_id,selected_text=request.selected_text,is_demo=analysis.is_demo,
+                claims=analysis.claims,sources=analysis.sources,caution=analysis.caution,pipeline_errors=analysis.pipeline_errors,
+                analysis_id=analysis.article_id,evidence_mentions=analysis.evidence_mentions,context_scope='page_excerpt')
+        analysis = await self.analyze(AnalyzeRequest(**request.model_dump(exclude={'article_id', 'selected_text', 'surrounding_text','context_scope'})))
         if request.article_id and request.article_id != analysis.article_id:
             raise ArticleInputError('현재 기사와 분석 ID가 다릅니다. 기사를 다시 분석해 주세요.')
         matches = [c for c in analysis.claims if c.original_text in request.selected_text]

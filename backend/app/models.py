@@ -165,7 +165,7 @@ class HeadlineExplanation(Model):
     reasons: list[HeadlineReason] = Field(default_factory=list, max_length=4)
 
 
-class ReportComparisonPoint(Model):
+class ComparisonCandidatePoint(Model):
     kind: Literal['common', 'difference']
     aspect: Literal['topic', 'event', 'actors', 'time', 'figures', 'attribution', 'focus', 'context']
     article_quote: str = Field(min_length=8, max_length=600)
@@ -173,11 +173,29 @@ class ReportComparisonPoint(Model):
     # 원문이 외국어일 때 related_quote의 한국어 번역과, 기사에서 달라진 점(빠졌거나 바뀐 내용)을 한 문장으로 설명한다. 판정 문구는 쓰지 않는다.
     related_quote_ko: str | None = Field(default=None, max_length=700)
     explanation: str | None = Field(default=None, max_length=300)
+    review_kind: Literal['none','claim_conflict','citation_difference'] = 'none'
+    context_anchor: str = Field(default='',max_length=120)
+
+
+class ReportComparisonPoint(ComparisonCandidatePoint):
+    review_status: Literal['none','needs_confirmation','paired_excerpt'] = 'none'
+
+    @model_validator(mode='after')
+    def review_has_evidence(self):
+        if self.review_kind=='none':
+            if self.review_status!='none':raise ValueError('Review status without a review candidate')
+        elif (self.kind!='difference' or self.article_quote==self.related_quote or self.aspect not in ('event','actors','time','figures','attribution')
+              or self.review_status=='none'):
+            raise ValueError('Review requires a material reporting difference')
+        if self.review_status=='paired_excerpt' and (len(self.context_anchor)<2 or
+            self.context_anchor not in self.article_quote or self.context_anchor not in self.related_quote):
+            raise ValueError('Review requires a shared literal reference')
+        return self
 
 
 class ReportComparison(Model):
     report_id: str
-    points: list[ReportComparisonPoint] = Field(default_factory=list, max_length=6)
+    points: list[ComparisonCandidatePoint] = Field(default_factory=list, max_length=6)
 
 
 class ReportComparisons(Model):
@@ -197,6 +215,8 @@ class RelatedArticle(Model):
     comparison_basis: Literal['body_excerpt', 'search_snippet', 'title_only', 'unknown'] = 'unknown'
     comparison_status: Literal['not_compared', 'compared', 'insufficient', 'failed'] = 'not_compared'
     comparison_points: list[ReportComparisonPoint] = Field(default_factory=list, max_length=6)
+    cited_by_article: bool = False
+    original_candidate: bool = False
 
     @model_validator(mode='after')
     def comparison_is_grounded(self):
@@ -204,12 +224,17 @@ class RelatedArticle(Model):
             raise ValueError('Comparison status requires paired quotes')
         if self.comparison_status == 'compared' and (not self.id or self.comparison_basis == 'unknown'):
             raise ValueError('Comparison requires a report ID and material scope')
+        for point in self.comparison_points:
+            if point.review_status=='paired_excerpt' and self.comparison_basis!='body_excerpt':
+                raise ValueError('Red review requires retrieved body excerpts')
+            if point.review_kind=='citation_difference' and not self.cited_by_article:
+                raise ValueError('Citation review requires a source relation')
         return self
 
 
 class ArticleAnalysis(Model):
     schema_version: Literal['source-tracing-v1'] = 'source-tracing-v1'
-    data_version: str = 'source-tracing-v1.8'
+    data_version: str = 'source-tracing-v1.9'
     article_id: str
     body_hash: str
     analysis_status: Literal['partial', 'complete']
@@ -271,6 +296,7 @@ class SelectionRequest(AnalyzeRequest):
     article_id: str | None = None
     selected_text: str = Field(min_length=2, max_length=3000)
     surrounding_text: str = Field(default='', max_length=6000)
+    context_scope: Literal['article','page_excerpt'] = 'article'
 
 
 class SelectionAnalysis(Model):
@@ -284,6 +310,46 @@ class SelectionAnalysis(Model):
     analysis_id: str | None = None
     matched_claim_ids: list[str] = Field(default_factory=list)
     evidence_mentions: list[Mention] = Field(default_factory=list)
+    context_scope: Literal['article','page_excerpt'] = 'article'
+
+
+class WordRequest(AnalyzeRequest):
+    selected_text: str = Field(min_length=1, max_length=80)
+    surrounding_text: str = Field(default='', max_length=6000)
+    context_scope: Literal['article','page_excerpt'] = 'article'
+
+
+class WordDraft(Model):
+    lemma: str = Field(min_length=1, max_length=80)
+    general_meaning: str = Field(min_length=1, max_length=1000)
+    contextual_meaning: str = Field(default='', max_length=1500)
+    context_quote: str = Field(default='', max_length=2000)
+    dictionary_source_id: str | None = None
+    dictionary_quote: str = Field(default='', max_length=600)
+    dictionary_meaning: str = Field(default='', max_length=1000)
+
+
+class DictionarySource(Model):
+    id: str
+    url: HttpUrl
+    title: str
+    excerpt: str = Field(min_length=1, max_length=600)
+    basis: Literal['retrieved','search_snippet']
+
+
+class WordAnalysis(Model):
+    word_id: str
+    selected_text: str
+    lemma: str
+    general_meaning: str
+    contextual_meaning: str
+    context_quote: str
+    dictionary_meaning: str
+    dictionary_status: Literal['found','search_only','not_found','failed']
+    dictionary_sources: list[DictionarySource] = Field(default_factory=list)
+    context_scope: Literal['article','page_excerpt'] = 'article'
+    is_demo: bool
+    pipeline_errors: list[PipelineError] = Field(default_factory=list)
 
 
 class Preview(Model):
@@ -297,7 +363,7 @@ class Preview(Model):
     search_status: SearchStatus
     claims: list[Claim] = Field(default_factory=list)
     body_hash: str = ''
-    data_version: str = 'source-tracing-v1.8'
+    data_version: str = 'source-tracing-v1.9'
     pipeline_errors: list[PipelineError] = Field(default_factory=list)
 
 

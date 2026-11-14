@@ -26,6 +26,7 @@ test('caution details merge repeated explanations while preserving distinct fact
 
 test('caution details consolidate missing fields and search failures without repeated empty categories',()=>{
   const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),a=structuredClone(fixture);
+  a.claims=[];a.evidence_mentions=[];
   a.sources.forEach(s=>s.unknown_fields=['작성자','전문 분야','작성자']);
   const error='검색된 자료의 원문 확보 요청이 실패했습니다.';
   a.search_errors=[error,error];
@@ -41,12 +42,12 @@ test('caution details consolidate missing fields and search failures without rep
   assert.equal(details.textContent.split(error).length-1,1);
   assert.equal(details.querySelectorAll('a').length,0,'demo source links must stay disabled');
   assert.doesNotMatch(details.textContent,/출처 속성을 확인하지|확인된 정보 없음/);
-  assert.ok(!details.textContent.includes(a.claims[0].original_text));
+  assert.ok(!details.textContent.includes(fixture.claims[0].original_text));
 });
 
 test('no identified caution shows only its state and disclaimer, and caution HTML remains escaped',()=>{
   const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),a=structuredClone(fixture);
-  a.sources=[];a.search_errors=[];
+  a.sources=[];a.search_errors=[];a.claims=[];a.evidence_mentions=[];
   a.caution={status:'none_identified',reasons:['확보한 출처 정보에서 별도의 주의사항을 발견하지 못했습니다. 주장 진위의 판정은 아닙니다.']};
   renderAnalysis(root,a,new Set(['cautions']));
   assert.equal(root.querySelector('#details-cautions h3'),null);
@@ -153,8 +154,7 @@ test('all displays use source states and a visible demo label, never a truth sco
   const html=document.body.innerHTML;
   assert.match(html,/시연용 예시/);
   assert.match(html,/원본 자료 확인/);
-  // 참고용 신뢰 지수 카드(.ncs)는 아래 별도 테스트에서 검사하고, 나머지 화면에는 점수 표현이 없어야 한다.
-  assert.doesNotMatch(html.replace(/<section class="card ncs[\s\S]*?<\/section>/,''),/신뢰도|다른 보도와 일치|거짓 또는 오류|확인된 사실|\d+%/);
+  assert.doesNotMatch(html,/신뢰도|다른 보도와 일치|거짓 또는 오류|확인된 사실|\d+%|종합 신뢰 지수/);
   const preview=renderPreview({is_demo:true,summary:fixture.one_line_summary,major_evidence:fixture.evidence_mentions,sources:fixture.sources,headline_difference:fixture.headline_difference,one_line_caution:fixture.caution.reasons[0]});
   const selection=renderSelection({is_demo:true,claims:fixture.claims,sources:fixture.sources,caution:fixture.caution});
   for(const rendered of [preview,selection]) {
@@ -162,15 +162,22 @@ test('all displays use source states and a visible demo label, never a truth sco
     assert.doesNotMatch(rendered,/신뢰도|반박됨|일부 확인|거짓 또는 오류/);
   }
 });
-test('the reference credibility card shows a level and its disclaimer, not a truth verdict',()=>{
-  const document=new JSDOM('<main></main>').window.document;
-  renderAnalysis(document.querySelector('main'),fixture);
-  const card=document.querySelector('.ncs');
+test('source notice replaces score UI with linked cautions and preserves independent card controls',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
+  renderAnalysis(root,fixture,new Set(['claims']));
+  const card=document.querySelector('.notice-card');
   assert.ok(card);
-  assert.match(card.textContent,/신뢰 높음|주의 필요|주의 요망|판단 보류/);
-  assert.match(card.textContent,/참고용 추정 점수/);
-  assert.match(card.textContent,/사실 여부를 판정한 것이 아니에요/);
+  assert.equal(card.getAttribute('aria-label'),'출처 확인·주의 상태');
+  assert.match(card.textContent,/주의 필요|확인 정보 부족|확보한 범위/);
+  assert.match(card.textContent,/사실·거짓이나 언론사의 신뢰 등급을 판정하지 않습니다/);
+  assert.equal(root.querySelector('.ncs-pct,.ncs-bar,.ncs-score'),null);
+  assert.equal(card.querySelectorAll('.notice-list > li').length<=3,true);
+  assert.doesNotMatch(card.textContent,/\d+점|\d+%|사진 자료의 날짜|교차검증|계산에서 제외/);
   assert.doesNotMatch(card.textContent,/거짓 또는 오류|확인된 사실|가짜 뉴스|허위/);
+  card.querySelector('[data-notice-details]').click();
+  assert.equal(root.querySelector('#details-cautions').hidden,false);
+  assert.equal(root.querySelector('#details-claims').hidden,false);
+  assert.equal(root.querySelectorAll('[data-toggle]').length,6);
 });
 test('untrusted article text and URL schemes cannot create executable markup',()=>{
   const document=new JSDOM('<main></main>').window.document;
