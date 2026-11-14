@@ -293,7 +293,7 @@ export function renderAnalysis(container, a, expanded = new Set()) {
   const sections=sectionData(a);
   const summary=a.ui_state?'<p>'+esc(a.one_line_summary)+'</p>':'<ul class="summary-list">'+summaryLines(a.one_line_summary).map(line=>'<li>'+esc(line)+'</li>').join('')+'</ul>';
   container.innerHTML = headlineCard(a,expanded) + (a.is_demo ? '<div class="demo-banner" role="status">시연용 예시 · 실제 기사나 실제 출처 분석 결과가 아닙니다.</div>' : '') + noticeStrip(a) + diffCard(a) +
-    '<div class="overview-grid"><div class="analysis-summary"><span>'+(a.ui_state==='loading'?'분석 중':a.ui_state==='error'?'분석 요청 실패':a.analysis_status==='partial'?'부분 분석':'출처 분석 완료')+'</span><h2>한 줄 요약</h2>'+summary+'</div>'+sectionMarkup(a,sections.find(s=>s.id==='metadata'),expanded)+'</div>'+
+    '<div class="overview-grid"><div class="analysis-summary"><span>'+(a.ui_state==='loading'?'분석 중':a.ui_state==='error'?'분석 요청 실패':a.analysis_status==='partial'?'부분 분석':'출처 분석 완료')+'</span><h2>기사 요약</h2>'+summary+'</div>'+sectionMarkup(a,sections.find(s=>s.id==='metadata'),expanded)+'</div>'+
     '<div class="analysis-grid">'+sections.filter(s=>s.id!=='metadata').map(s=>sectionMarkup(a,s,expanded)).join('')+'</div>'+
     '<div class="card"><h2>제목과 본문 표현의 차이</h2><p>' + esc(a.headline_difference) + '</p><p class="trace-note">' + esc(a.final_comment) + '</p><p class="muted">분석 시각: ' + esc(a.analyzed_at) + '</p></div>';
   const setSectionOpen = (id,open) => {

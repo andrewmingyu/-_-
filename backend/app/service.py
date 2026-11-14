@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from .models import (Article, ArticleAnalysis, Claim, Decision, Extraction, Source, RelatedArticle,
                      SourceFacts, SourceReviews, AnalyzeRequest, SelectionAnalysis, TextSpan,
                      CautionDetail, ArticleContext, EventInfo, PipelineError, SectionState, ReportComparisons,
-                     HeadlineExplanation, Preview)
+                     HeadlineExplanation, Preview, Mention)
 from .prompts import EXTRACT, TRACE, COMPARE_REPORTS
 from .report_comparison import comparison_material, apply_comparisons
 from .errors import ProviderError
@@ -154,6 +154,58 @@ def order_timeline(items, published=None):
     for slot, src in zip(slots, ordered):
         result[slot] = items[src]
     return result
+
+
+def grounded_name(name, text):
+    """이름이 본문에 있으면 본문에 적힌 표기 그대로 돌려준다. 띄어쓰기만 다른 경우(예: '형사 1단독' ↔ '형사1단독')도 인정한다.
+    본문에 없는 이름(AI 추정)은 None."""
+    name = str(name or '').strip()
+    if not name:
+        return None
+    if name in text:
+        return name
+    compact = re.sub(r'\s+', '', name)
+    if len(compact) < 2:
+        return None
+    m = re.search(r'\s*'.join(map(re.escape, compact)), text)
+    return m.group(0) if m else None
+
+
+# 문장 끝이 이런 서술이면 문장 맨 앞의 주어가 그 내용을 말하거나 발표·판단한 주체다
+SPEAKER_VERBS = r'(?:밝혔|말했|전했|설명했|지적했|강조했|선고했|명령했|판결했|발표했|주장했|반박했|덧붙였|예고했|답했|비판했|언급했|경고했|당부했|요구했|촉구했|결정했|판단했|부인했|인정했|약속했|보도했|해명했|공지했|통보했)다'
+LEAD_WORDS = r'(?:특히|이에|또|또한|한편|아울러|이어|다만|앞서|이후|그러나|하지만|이와 관련해|이날|당시)'
+PRONOUNS = {'그', '그녀', '이들', '그들', '이', '해당', '본인'}
+
+
+def speaker_from_sentence(sentence):
+    """주장 문장이 'OO은/는 … 밝혔다·선고했다'처럼 끝나면 문장 맨 앞의 주어를 발언자로 돌려준다.
+    문장에 실제로 있는 글자만 쓰고, 수동형('조사됐다' 등)이나 대명사는 쓰지 않는다."""
+    sentence = str(sentence or '').strip()
+    if not re.search(SPEAKER_VERBS + r'[.”"\'’\s]*$', sentence):
+        return None
+    m = re.match(r'^(?:' + LEAD_WORDS + r'\s+)?(?:\d{1,2}일\s+)?([^\s"“”‘’\'(,][^"“”‘’\',]{0,38}?)(?:은|는)\s', sentence)
+    if not m:
+        return None
+    name = m.group(1).strip()
+    return None if name in PRONOUNS or len(name) < 2 else name
+
+
+PRESS_SUFFIX = re.compile(r'(뉴스|일보|신문|방송|통신|경제|타임스|저널|TV|tv)$')
+
+
+def attribution_before(text, quote):
+    """주장 문장 바로 앞(같은 문장 안)에 'OO에 따르면'이 있으면 (원문 구절, 출처 이름)을 돌려준다. 예: '14일 연합뉴스에 따르면'."""
+    start = text.find(quote)
+    if start <= 0:
+        return None
+    head = text[max(0, start - 60):start]
+    head = re.split(r'[.!?。\n]', head)[-1]
+    m = re.search(r'((?:\d{1,2}일\s+)?([가-힣A-Za-z0-9·&\s]{2,30}?))에\s*따르면\s*$', head)
+    if not m:
+        return None
+    phrase = head[m.start():].strip()
+    name = re.sub(r'^\d{1,2}일\s+', '', m.group(1)).strip()
+    return (phrase, name) if len(name) >= 2 and phrase in text else None
 
 
 def attribution_near(text, quote, label, window=200):
@@ -432,7 +484,7 @@ class Analyzer:
             metadata['url'] = normalize_url(request.url)
         return body_hash(json.dumps([normalize_url(request.url), body_hash(request.page_text),
             request.title, metadata, clean_context(request.article_context,request.page_text).model_dump(mode='json'),
-            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.11', focus], ensure_ascii=False))
+            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.12', focus], ensure_ascii=False))
 
     def lookup(self, article_id, url=None):
         url = normalize_url(url) if url is not None else None
@@ -905,7 +957,13 @@ class Analyzer:
             seen.add(c.id)
             c.claim_text = c.original_text
             c.translation = korean_translation(c.translation, c.original_text)
-            c.speaker = c.speaker if c.speaker and c.speaker in text else None
+            # 발언자: AI가 쓴 이름을 본문 표기로 맞추고, 비어 있으면 문장 맨 앞의 주어에서 찾는다 (본문에 없는 이름은 쓰지 않음)
+            given = c.speaker
+            c.speaker = grounded_name(given, text)
+            if given and not c.speaker:
+                logger.info('발언자 제거(본문에 없음): %s', given)
+            if not c.speaker:
+                c.speaker = speaker_from_sentence(c.original_text)
             c.source_ids, c.mention_ids, c.source_status = [], [], 'unknown'
             c.caution = Decision(reasons=['출처 분석 전입니다.'])
             c.article_span = text_span(text,c.original_text)
@@ -924,6 +982,18 @@ class Analyzer:
             m.anonymous = bool(re.search(r'익명|관계자|소식통', m.article_quote))
             m.article_span = text_span(text,m.article_quote)
             mentions.append(m)
+        # 주장 문장 바로 앞에 'OO에 따르면'이 있는데 근거로 뽑히지 않았으면 그 구절을 근거(출처)로 추가한다
+        for c in claims:
+            found = attribution_before(text, c.original_text)
+            if not found or any(c.id in m.claim_ids and found[0] in m.article_quote for m in mentions):
+                continue
+            phrase, name = found
+            same = next((m for m in mentions if m.article_quote == phrase), None)
+            if same:
+                same.claim_ids = list(dict.fromkeys([*same.claim_ids, c.id]))
+                continue
+            mentions.append(Mention(id='m_attr_' + c.id, claim_ids=[c.id], description=phrase, article_quote=phrase, source_label=name,
+                source_kind='news_report' if PRESS_SUFFIX.search(name) else 'unknown', article_span=text_span(text, phrase)))
         extracted.claims, extracted.evidence_mentions = claims, mentions
         extracted.context_timeline = [t.model_copy(update={'description':t.article_quote, 'article_span':text_span(text,t.article_quote),
             'date':t.date if grounded_date(t.date, t.article_quote) else (date_in_quote(t.article_quote) or '시점 미확인'),'source_ids':[]}) for t in extracted.context_timeline if t.article_quote and t.article_quote in text]

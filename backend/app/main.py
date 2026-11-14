@@ -39,7 +39,7 @@ async def run_analysis(request,preview=False):
 
 @app.get('/health')
 def health():
-    return {'status': 'ok', 'mode': analyzer.mode, 'schema_version': 'source-tracing-v1','data_version':'source-tracing-v1.11'}
+    return {'status': 'ok', 'mode': analyzer.mode, 'schema_version': 'source-tracing-v1','data_version':'source-tracing-v1.12'}
 
 
 @app.post('/api/articles/analyze', response_model=ArticleAnalysis)

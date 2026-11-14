@@ -242,7 +242,7 @@
   "search_status": "completed",
   "search_errors": [],
   "analyzed_at": "2026-11-11T00:00:00Z",
-  "data_version": "source-tracing-v1.11",
+  "data_version": "source-tracing-v1.12",
   "headline_explanation": {
     "meaning": "지원제도 개편을 검토하는 상황이며, 구매 시점 등에 영향을 줄 수 있다는 의미입니다.",
     "reasons": [

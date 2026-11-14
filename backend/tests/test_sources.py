@@ -67,7 +67,7 @@ def test_original_and_caution_absence_do_not_produce_a_truth_verdict():
     assert a.claims[0].source_status == 'original_found'
     assert a.caution.status == 'none_identified'
     assert '진위' in a.caution.reasons[0]
-    assert a.claims[0].claim_text == TEXT and a.claims[0].speaker is None
+    assert a.claims[0].claim_text == TEXT and a.claims[0].speaker == '정책연구원'  # 문장 주어에서 찾은 발언자 (본문에 있는 글자)
     assert a.sources[0].discovery == 'article_cited'
     forbidden = {'verification_status','relation_to_claim','score','probability','credibility'}
     def check(obj):
