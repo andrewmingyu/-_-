@@ -12,7 +12,7 @@ event에는 핵심 사건의 description/article_quote/time/location을 넣되 �
 자료 종류는 official_release/public_record/research/statistics/interview/expert_comment/news_report/anonymous_statement/unknown으로 구분하라.
 기사 내 위치 article_span과 출처 ID, 주의사항 details, 타임라인 source_ids는 서버에서 채우므로 기본값으로 둬라.
 검토/예정/인용의 한정 표현을 보존하라. original_text, article_quote는 원문의 연속된 인용이어야 한다.
-claim_text도 원문 표현을 그대로 사용하라. speaker, source_label, document_title은 원문에 있는 문자열만 사용한다.
+claim_text도 원문 표현을 그대로 사용하라. speaker, source_label, document_title은 원문에 있는 문자열만 사용한다. speaker는 그 주장 내용을 말하거나 발표·판단·결정·보도한 주체(사람·기관)다. 따옴표 발언뿐 아니라 판결·발표·조사 결과 같은 사실 서술 문장도 문장 안에 주체가 있으면 채운다(예: '춘천지법 형사1단독 정종건 부장판사는 … 선고했다' → '춘천지법 형사1단독 정종건 부장판사'). 띄어쓰기까지 원문 그대로 복사하고, 문장에 주체가 없으면(예: '~것으로 조사됐다') 추정하지 말고 null로 둔다. 주장 문장 앞에 '○○에 따르면'처럼 출처가 붙어 있으면 그 구절을 evidence_mentions로 따로 추출하고 source_label에 ○○를 넣는다.
 기사 본문이 한국어가 아니면 claims[].translation에는 original_text의, evidence_mentions[].translation에는 article_quote의 자연스러운 한국어 번역을 넣는다. 의미를 더하거나 빼지 말고 검토·예정·인용·가능성·부정 등 한정 표현을 그대로 옮긴다. 본문이 한국어면 translation은 null로 둔다.
 익명 여부는 '익명', '관계자', '소식통' 등의 실제 표현에 근거한다.
 claims에는 source_ids를 넣지 말고 source_status와 caution은 기본값을 유지한다. claim_ids와 mention_ids를 연결한다.
