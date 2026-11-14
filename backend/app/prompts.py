@@ -13,6 +13,7 @@ event에는 핵심 사건의 description/article_quote/time/location을 넣되 �
 기사 내 위치 article_span과 출처 ID, 주의사항 details, 타임라인 source_ids는 서버에서 채우므로 기본값으로 둬라.
 검토/예정/인용의 한정 표현을 보존하라. original_text, article_quote는 원문의 연속된 인용이어야 한다.
 claim_text도 원문 표현을 그대로 사용하라. speaker, source_label, document_title은 원문에 있는 문자열만 사용한다.
+기사 본문이 한국어가 아니면 claims[].translation에는 original_text의, evidence_mentions[].translation에는 article_quote의 자연스러운 한국어 번역을 넣는다. 의미를 더하거나 빼지 말고 검토·예정·인용·가능성·부정 등 한정 표현을 그대로 옮긴다. 본문이 한국어면 translation은 null로 둔다.
 익명 여부는 '익명', '관계자', '소식통' 등의 실제 표현에 근거한다.
 claims에는 source_ids를 넣지 말고 source_status와 caution은 기본값을 유지한다. claim_ids와 mention_ids를 연결한다.
 evidence_mentions는 기사 자체가 근거로 제시한 자료/발언만 담는다. URL을 생성하지 않는다.
@@ -38,6 +39,15 @@ COMPARE_REPORTS = '''현재 기사와 검색으로 확보한 다른 보도의 �
 report_id는 reports에 제공한 ID만 사용한다. URL이나 보도를 새로 만들지 않는다.
 각 비교 항목은 현재 body의 정확한 연속 인용 article_quote와 해당 보도 text의 정확한 연속 인용 related_quote를 모두 포함한다.
 인용은 각각 8~600자, 보도별 최대 6개다. 확인할 수 없거나 다른 사건이면 빈 points로 둔다.
+is_original=true인 보도는 기사가 인용·인용 보도하는 원문이다. 이 보도는 다음 순서로 먼저 대조하고, 어느 쪽이 맞다거나 왜곡이라는 판단은 하지 않는다.
+① 기사가 'OO는 ~라고 보도·평가했다'고 쓴 문장마다, 원문에서 그 내용을 말한 주체가 그 매체 자신인지 원문이 소개한 다른 사람들(지지자·비판자·전문가 등)의 견해인지 구분한다. 주체가 다르면 aspect=attribution, kind=difference로 둔다.
+② 원문이 현재 상태나 '관점에 따라' 갈리는 복수의 견해로 쓴 것을 기사가 미래 예측·단일 결론·인과('~하면 ~가 될 것')로 바꿨으면 aspect=attribution, kind=difference로 둔다.
+③ 원문의 조건·한정 표현이 기사에서 빠졌거나 바뀌었는지 본다.
+각 항목에는 기사 문장과 원문 구절을 정확히 인용한다. 원문이 영어면 원문 구절은 영어 그대로 인용한다.
+is_original=true이고 kind=difference인 항목에는 related_quote_ko에 원문 구절의 자연스러운 한국어 번역을, explanation에 한 문장으로 무엇이 달라졌는지를 적는다.
+is_original_candidate=true는 검색으로 찾은 원문 후보이며 실제 인용 관계는 미확인이다. 후보도 두 구절과 한국어 번역·서술 차이를 제공하되 실제 원본/인용 자료로 단정하지 않는다. 그 후보의 citation_difference는 인용 관계 확인 전에는 사용하지 않는다.
+explanation은 '원문은 ~라고 썼는데 기사는 ~로 옮겼다', '원문의 ~라는 조건이 기사에서 빠졌다'처럼 두 글의 서술 차이만 설명하고 왜곡·거짓·의도 같은 판정 표현은 쓰지 않는다.
+원문의 조건·한정 표현이 기사에서 빠진 경우에는 related_quote에 빠진 원문 구절을, article_quote에는 그 내용이 반영됐어야 할 기사 문장을 인용한다.
 kind=common은 같은 주제·요소를 다룬다는 뜻이고 사실이 입증됐다는 뜻이 아니다.
 kind=difference는 두 보도의 서술·수치·시점·귀속·강조가 다름을 보여주는 것으로 어느 쪽이 맞다는 판단이 아니다.
 aspect는 topic/event/actors/time/figures/attribution/focus/context 중 하나다.

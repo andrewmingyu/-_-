@@ -381,3 +381,16 @@ button:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-
 
 /* 주장 번호 표시 (주장 1, 주장 1의 근거) */
 .trace-badge.claim-no { background:var(--accent-soft); color:var(--accent-text); margin-right:4px; }
+.odiff-point { margin-top:10px; border-top:1px solid var(--line); }
+.odiff-point h3 { font-size:12.5px; margin:8px 0 6px; }
+.odiff-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.odiff-pair > div { min-width:0; background:var(--neutral-soft); border-radius:9px; padding:10px; }
+.odiff-pair b { font-size:12px; color:var(--sub); }
+.odiff-pair blockquote { margin:6px 0 0; padding:0; border:0; font-size:12.5px; }
+.odiff-why { margin-top:8px; font-size:12.5px; line-height:1.55; }
+.odiff-why b { color:var(--sub); }
+@media(max-width:380px) { .odiff-pair { grid-template-columns:1fr; } }
+
+/* 외국어 기사의 AI 번역 */
+.translation { margin:6px 0; font-size:13px; line-height:1.6; }
+.translation .trace-badge { margin-right:4px; }

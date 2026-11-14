@@ -69,3 +69,19 @@ test('red article badges use the cross-check label and identical quotes cannot b
   a.related_articles[0].comparison_points[0].related_quote=current;
   assert.notEqual(sourceNotice(a).level,'review');
 });
+test('merged top comparison keeps candidate disclosure, translation, red alert and exact report navigation',()=>{
+  const a=example(),r=a.related_articles[0],p=r.comparison_points[0];
+  r.original_candidate=true;p.related_quote_ko='비교 자료의 한국어 번역';p.explanation='두 자료의 지원 규모 표현이 다름';
+  assert.equal(validateAnalysis(a),a);
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
+  renderAnalysis(root,a,new Set(['claims']));
+  const card=root.querySelector('.odiff');assert.ok(card);
+  assert.match(card.textContent,/원문 후보 · 인용 관계 미확인/);
+  assert.match(card.textContent,/AI 한국어 번역/);assert.ok(card.textContent.includes(p.explanation));
+  assert.ok(card.querySelector('.report-review'));assert.equal(root.querySelectorAll('[data-toggle]').length,6);
+  card.querySelector('[data-report-review]').click();
+  assert.equal(document.getElementById('related-report-'+r.id).open,true);
+  assert.equal(root.querySelector('#details-claims').hidden,false);
+  assert.ok(root.querySelector('#details-related').textContent.includes(p.related_quote_ko));
+  p.review_kind='citation_difference';assert.throws(()=>validateAnalysis(a),/교차검증 근거/);
+});

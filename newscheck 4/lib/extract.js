@@ -190,7 +190,16 @@ export function extractArticle(htmlText = null, pageUrl = null) {
   if (!modified && naverModified) modified = naverModified.getAttribute('data-modify-date-time') || naverModified.getAttribute('data-date-time') || txt(naverModified);
   if (!published && typeof articleData.datePublished === 'string') published = articleData.datePublished;
   if (!modified && typeof articleData.dateModified === 'string') modified = articleData.dateModified;
-  // A date mentioned in the article body is not necessarily the publication date.
+  // 제목 아래에 화면으로 표시된 "입력 2018.03.12. 03:10"이 있으면, 재게시·이전 때문에 달라질 수 있는 메타 태그 날짜보다 우선한다.
+  // 본문에 적힌 사건 날짜는 발행일로 쓰지 않는다. 반드시 '입력' 표기가 붙은 날짜만 쓴다.
+  const pageTxt = txt(document.body).replace(/\s+/g, ' ');
+  const at = title ? pageTxt.indexOf(title.slice(0, 20)) : -1;
+  const shown = pageTxt.slice(Math.max(at, 0), Math.max(at, 0) + 1200).match(/입력\s*[:：]?\s*(\d{4})[.\-\/]\s?(\d{1,2})[.\-\/]\s?(\d{1,2})\.?(?:\s*(\d{1,2}):(\d{2}))?/);
+  if (shown) {
+    const two = n => String(n).padStart(2, '0');
+    const shownDate = shown[1] + '-' + two(shown[2]) + '-' + two(shown[3]);
+    if (!published || published.slice(0, 10) !== shownDate) published = shownDate + (shown[4] ? 'T' + two(shown[4]) + ':' + shown[5] + ':00+09:00' : '');
+  }
 
   const pageText = body.slice(0,12000).replace(/\s+/g,' ').trim();
   const links = [];

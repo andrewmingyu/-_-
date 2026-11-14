@@ -124,7 +124,7 @@ try {
   await reviewPage.evaluate(async fixture=>{
     const {renderAnalysis}=await import('/shared/view.js');
     const report=fixture.related_articles[0];
-    Object.assign(report,{title:'지원 규모를 다룬 다른 시연 보도',comparison_status:'compared',comparison_basis:'body_excerpt',cited_by_article:false,
+    Object.assign(report,{title:'지원 규모를 다룬 다른 시연 보도',comparison_status:'compared',comparison_basis:'body_excerpt',cited_by_article:false,original_candidate:true,
       comparison_points:[{kind:'difference',aspect:'figures',article_quote:'2027년 지원금은 올해보다 확대할 계획이라고 발표했다.',
         related_quote:'2027년 지원금은 올해보다 축소할 계획이라고 발표했다.',review_kind:'claim_conflict',
         context_anchor:'2027년 지원금',review_status:'paired_excerpt'}]});
@@ -132,6 +132,8 @@ try {
   },fixture);
   assert.equal(await reviewPage.locator('.notice-review').count(),1);
   assert.match(await reviewPage.locator('.notice-review').innerText(),/교차검증 필요/);
+  assert.match(await reviewPage.locator('.odiff').innerText(),/원문 후보 · 인용 관계 미확인/);
+  assert.match(await reviewPage.locator('.odiff').innerText(),/교차검증 필요/);
   assert.doesNotMatch(await reviewPage.locator('.notice-review').innerText(),/왜곡했습니다|\d+점/);
   await reviewPage.screenshot({path:'.tools/report-review-panel.png',fullPage:true});
   await reviewPage.locator('.notice-card [data-report-review]').click();
@@ -146,7 +148,7 @@ try {
     assert.equal(await reviewPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   }
   await reviewPage.emulateMedia({colorScheme:'dark'});
-  assert.equal(await reviewPage.locator('.report-review').isVisible(),true);
+  assert.equal(await reviewPage.locator('.report-review').first().isVisible(),true);
   await reviewPage.close();
   const contentPage=await browser.newPage({viewport:{width:1000,height:900}});
   await contentPage.goto(origin+'/__popup-test.html');

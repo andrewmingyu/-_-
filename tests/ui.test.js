@@ -330,3 +330,21 @@ test('settings preserve the server port but request a valid host permission and 
     assert.ok(removed.includes('apiKey'));
   }finally{globalThis.document=previousDocument;globalThis.chrome=previousChrome;}
 });
+test('foreign-language claims and evidence show a Korean AI translation beside the original quote',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),data=structuredClone(fixture);
+  data.claims[0].translation='김정은은 비핵화를 내세워 제재를 약화하려 한다';
+  data.evidence_mentions[0].translation='그는 2007년 김정일을 만났다';
+  renderAnalysis(root,data,new Set(['claims','evidence']));
+  assert.match(root.querySelector('#summary-claims').textContent,/주장 1 · 김정은은 비핵화를/);
+  const claims=root.querySelector('#details-claims').textContent;
+  assert.ok(claims.includes(data.claims[0].original_text),'원문 인용 유지');
+  assert.match(claims,/AI 번역\s*김정은은 비핵화를/);
+  assert.match(root.querySelector('#summary-evidence').textContent,/그는 2007년 김정일을 만났다/);
+  assert.match(root.querySelector('#details-evidence').textContent,/AI 번역\s*그는 2007년/);
+  // 번역이 없는 한국어 기사는 기존 표시 그대로
+  const plain=new JSDOM('<main></main>').window.document.querySelector('main');
+  renderAnalysis(plain,fixture,new Set(['claims']));
+  assert.doesNotMatch(plain.textContent,/AI 번역/);
+  const selection=renderSelection({is_demo:true,claims:data.claims.slice(0,1),sources:[],caution:fixture.caution});
+  assert.match(selection,/AI 번역/);
+});

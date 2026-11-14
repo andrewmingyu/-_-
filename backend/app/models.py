@@ -80,6 +80,8 @@ class Mention(Model):
     claim_ids: list[str] = Field(default_factory=list)
     description: str
     article_quote: str
+    # 외국어 기사일 때만 채우는 한국어 번역 (원문 인용은 article_quote에 그대로 둠)
+    translation: str | None = Field(default=None, max_length=600)
     source_label: str | None = None
     document_title: str | None = None
     source_kind: str = 'unknown'
@@ -91,6 +93,8 @@ class Claim(Model):
     id: str
     original_text: str
     claim_text: str
+    # 외국어 기사일 때만 채우는 한국어 번역 (원문 인용은 original_text에 그대로 둠)
+    translation: str | None = Field(default=None, max_length=600)
     claim_type: ClaimType
     speaker: str | None = None
     mention_ids: list[str] = Field(default_factory=list)
@@ -166,6 +170,9 @@ class ComparisonCandidatePoint(Model):
     aspect: Literal['topic', 'event', 'actors', 'time', 'figures', 'attribution', 'focus', 'context']
     article_quote: str = Field(min_length=8, max_length=600)
     related_quote: str = Field(min_length=8, max_length=600)
+    # 원문이 외국어일 때 related_quote의 한국어 번역과, 기사에서 달라진 점(빠졌거나 바뀐 내용)을 한 문장으로 설명한다. 판정 문구는 쓰지 않는다.
+    related_quote_ko: str | None = Field(default=None, max_length=700)
+    explanation: str | None = Field(default=None, max_length=300)
     review_kind: Literal['none','claim_conflict','citation_difference'] = 'none'
     context_anchor: str = Field(default='',max_length=120)
 
@@ -209,6 +216,7 @@ class RelatedArticle(Model):
     comparison_status: Literal['not_compared', 'compared', 'insufficient', 'failed'] = 'not_compared'
     comparison_points: list[ReportComparisonPoint] = Field(default_factory=list, max_length=6)
     cited_by_article: bool = False
+    original_candidate: bool = False
 
     @model_validator(mode='after')
     def comparison_is_grounded(self):
@@ -226,7 +234,7 @@ class RelatedArticle(Model):
 
 class ArticleAnalysis(Model):
     schema_version: Literal['source-tracing-v1'] = 'source-tracing-v1'
-    data_version: str = 'source-tracing-v1.8'
+    data_version: str = 'source-tracing-v1.9'
     article_id: str
     body_hash: str
     analysis_status: Literal['partial', 'complete']
@@ -355,7 +363,7 @@ class Preview(Model):
     search_status: SearchStatus
     claims: list[Claim] = Field(default_factory=list)
     body_hash: str = ''
-    data_version: str = 'source-tracing-v1.8'
+    data_version: str = 'source-tracing-v1.9'
     pipeline_errors: list[PipelineError] = Field(default_factory=list)
 
 

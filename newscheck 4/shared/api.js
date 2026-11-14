@@ -54,6 +54,7 @@ function validateRelatedReport(report) {
   if(report.comparison_status!==undefined&&!['not_compared','compared','insufficient','failed'].includes(report.comparison_status))throw new Error('보도 비교 상태 오류');
   const points=report.comparison_points ?? [];
   if(report.cited_by_article!==undefined && typeof report.cited_by_article!=='boolean')throw new Error('보도 인용 관계 오류');
+  if(report.original_candidate!==undefined && typeof report.original_candidate!=='boolean')throw new Error('원문 후보 상태 오류');
   if(!Array.isArray(points)||points.length>6)throw new Error('보도 비교 항목 오류');
   if((points.length>0)!==(report.comparison_status==='compared'))throw new Error('보도 비교 상태와 항목 불일치');
   if(points.length&&(!report.id||!['body_excerpt','search_snippet','title_only'].includes(report.comparison_basis)))throw new Error('보도 비교 ID·범위 누락');
@@ -64,6 +65,7 @@ function validateRelatedReport(report) {
     if(!['none','claim_conflict','citation_difference'].includes(kind)||!['none','needs_confirmation','paired_excerpt'].includes(status))throw new Error('교차검증 상태 오류');
     if(point.context_anchor!==undefined && (typeof point.context_anchor!=='string'||point.context_anchor.length>120))throw new Error('교차검증 비교 기준 오류');
     if(kind==='none'?status!=='none':!reportReviewPoints(report).includes(point))throw new Error('교차검증 근거 누락');
+    for(const [extra,limit] of [[point.related_quote_ko,700],[point.explanation,300]])if(extra!==undefined&&extra!==null&&(typeof extra!=='string'||Array.from(extra).length>limit))throw new Error('보도 비교 설명 오류');
   }
 }
 export function validatePreview(p) {

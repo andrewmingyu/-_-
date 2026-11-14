@@ -1,5 +1,14 @@
 ﻿# 기본 기능 및 통합 검증 결과
-## 2026-11-14 교차검증 재확인 안내 — 최신
+## 2026-11-14 원격 main 통합 — 최신
+- 원격 main cd1794e(PR #8 번역, PR #9 외신 검색/원문 비교/관련 기사 필터/작성일 추출)와 로컬 보관 커밋 bedc691을 feat/source-caution-update에서 통합했다. GitHub main에 대한 Push/Merge와 구분한다.
+- 사용자 선택: 상단 ‘원문과 다른 점’ 카드 유지 + 빨간 교차검증 안내 연결, 단어 유사성만 맞는 자료는 원문 후보로 표시. source.original_status/discovery를 유사성만으로 승격하던 경로를 제거했다. 직접 링크와 원자료 증거가 있는 기존 원본 확인 경로는 보존했다.
+- JavaScript 68개·Python 120개, 합계 188개 통과. 원격 번역·외신 검색·필터·작성일 추출 테스트를 유지하고 후보 구분/추가 연결 근거/상단 카드·번역·재확인 이동 회귀를 추가했다. 이전 신뢰도 가중치 테스트는 최신 점수 제거 요구에 따라 주의 상태 테스트로 대체했다.
+- TypeScript 검사·확장 빌드·Chrome headless·로컬 Mock HTTP·A/B/C/D 통합 smoke 통과. 네이버/연합뉴스TV fixture의 실제 MV3 패키지에서 Hover·고정 문장 선택과 일반 페이지 문장·단어 팝업도 통과했다. Chrome headless는 상단 원문 후보 표시·빨간 안내·정확한 보도 이동·독립 카드·320/440px 넘침과 다크모드를 검사했다.
+- 병합 과정에서 일반 출처까지 추가 비교해 호출 수가 늘던 경로를 외신 원문 후보 대상으로 제한했다. 원격 CSS에 남아 있던 충돌 표시는 두 스타일을 함께 보존하며 제거했다. 전체 소스에서 충돌 표시가 없는지 확인한다.
+- 실제 Gemini/Tavily/DART 호출·분석 속도·외신 후보/번역의 실제 품질은 검증하지 않았다. 합성 fixture/Mock 결과와 실환경 품질을 구분한다. 기존 Starlette 사용 중단 예정 경고 1개는 유지한다.
+- 통합 data_version/health/캐시는 source-tracing-v1.9다. 서버 재시작 → npm run build → 확장 새로고침 → 기사 F5 → 다시 분석으로 적용한다. 개인 backend/.env와 API 키는 수정하지 않았다.
+
+## 2026-11-14 교차검증 재확인 안내
 - JavaScript 65개·Python 105개, 총 170개 통과. 동일 인용/단순 강조 차이 제외, 허위 보도 ID·인용 제거, 검색 요약/제목의 빨강 승격 금지, 공통 표현 검사, 서버가 확인한 인용 관계, 실제 FastAPI 요청·응답을 검사했다. 기존 Starlette 사용 중단 예정 경고 1개가 남아 있다.
 - TypeScript 검사·확장 빌드·Chrome headless·A/B/C/D Mock 통합·로컬 HTTP smoke 통과. 별도 임시 프로필의 실제 MV3 패키지에서 네이버/연합뉴스TV fixture의 Hover·고정 문장 선택과 일반 사이트 문장·단어 팝업 회귀도 통과했다.
 - Chrome headless에서 빨간 안내 → 정확한 비교 보도 펼침·두 인용 표시·기존 주장 카드 유지, 320/440px 가로 넘침 없음, 다크모드를 확인했다. 캡처는 `.tools/report-review-panel.png`, `.tools/report-review-detail.png`의 합성 시연 자료다. 실제 기사에 대한 충돌 판정 결과가 아니다.

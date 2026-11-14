@@ -1,4 +1,4 @@
-# API 명세 — source-tracing-v1 / 데이터 보완 1.8
+# API 명세 — source-tracing-v1 / 데이터 보완 1.9
 구현 기준: backend/app/main.py·models.py, newscheck 4/shared/types.ts.
 서버 자동 문서: http://127.0.0.1:8000/docs. 기계 판독 스키마: [api.schema.json](api.schema.json).
 모든 JSON은 UTF-8이고 Content-Type은 application/json이다.
@@ -15,7 +15,7 @@
 
 health 응답:
 ```json
-{"status":"ok","mode":"mock","schema_version":"source-tracing-v1","data_version":"source-tracing-v1.8"}
+{"status":"ok","mode":"mock","schema_version":"source-tracing-v1","data_version":"source-tracing-v1.9"}
 ```
 
 ## 요청
@@ -170,7 +170,7 @@ SelectionAnalysis는 article_id, selected_text, is_demo, claims[], sources[], ca
 서버 인증·사용자별 quota·자동 backoff·Retry-After에 따른 자동 대기/재시도는 아직 없다. Retry-After 값의 파싱·응답 전달은 구현되어 있다. 외부 공개 배포 전에 제한 정책을 별도 구현한다.
 
 ## 추가 필드와 기본값 (기존 경로 유지)
-- schema_version은 source-tracing-v1, data_version 기본값은 source-tracing-v1.8이다. 기존 클라이언트의 기본 필드를 유지하고 추가 항목은 기본값으로 생략 입력을 허용한다.
+- schema_version은 source-tracing-v1, data_version 기본값은 source-tracing-v1.9이다. 기존 클라이언트의 기본 필드를 유지하고 추가 항목은 기본값으로 생략 입력을 허용한다.
 - ArticleContext: cited_links의 각 항목은 url/text/article_quote이며 기사에서 수집한 링크다. 직접 링크라도 검색에서 확인되지 않은 새 출처로 저장하지 않는다. quotations는 원문에 있는 인용, body_truncated는 잘림 여부다.
 - Claim/Mention/TimelineItem.article_span: start/end/quote, 정규화 page_text의 Unicode 문자 기준, 서버 산출.
 - EventInfo: description/article_quote/time/location. quote가 본문에 있고 time/location이 그 인용에 포함돼야 한다.
@@ -179,7 +179,7 @@ SelectionAnalysis는 article_id, selected_text, is_demo, claims[], sources[], ca
 - Decision.details: {reason, source_ids[], claim_ids[]} 목록. 이유와 출처/주장을 연결하며 허구 참조는 거부한다. 기존 reasons[]도 유지한다.
 - RelatedArticle.topic/summary: 검색 주제 및 공급자 검색 요약. 독립성이나 주장의 진위 판정은 생성하지 않는다.
 - RelatedArticle.id: 검색 URL에서 서버가 부여한 report ID. comparison_basis는 body_excerpt/search_snippet/title_only/unknown, comparison_status는 not_compared/compared/insufficient/failed다.
-- comparison_points: {kind:common|difference, aspect:topic|event|actors|time|figures|attribution|focus|context, article_quote, related_quote}. 양쪽 실제 인용(8~600자)을 모두 확인한 항목만 최대 6개 저장한다. compared에는 report ID·확인된 비교 범위·비교 항목이 필요하다.
+- comparison_points: {kind:common|difference, aspect:topic|event|actors|time|figures|attribution|focus|context, article_quote, related_quote, related_quote_ko?, explanation?}. related_quote_ko·explanation은 선택이며 원문이 외국어일 때 번역과 달라진 점의 한 문장 설명이다(판정 표현 금지). 양쪽 실제 인용(8~600자)을 모두 확인한 항목만 최대 6개 저장한다. compared에는 report ID·확인된 비교 범위·비교 항목이 필요하다.
 - common은 공통 보도 항목, difference는 표현·강조 차이다. 근거의 지지/반박이나 진위 상태가 아니다. differences_summary는 검증된 항목의 종류를 서버가 짧게 조합한 설명이다.
 - 이전 응답의 비교 필드 생략은 id='', basis=unknown, status=not_compared, points=[]로 호환한다. 비교 실패는 related_comparison 단계 오류이며 기존 기사 목록을 유지한다.
 - ArticleAnalysis.section_states: context/metadata/claims/evidence/cautions/related의 {status,message}. status는 ready/empty/partial/error. 요청 중 loading은 클라이언트 표시 전용이다.
@@ -195,7 +195,7 @@ SelectionAnalysis는 article_id, selected_text, is_demo, claims[], sources[], ca
 ## 제목 설명·짧은 맥락 표현 (data_version 1.7)
 ArticleAnalysis.headline_explanation은 {meaning, reasons[]}이며 생략 시 빈 값으로 호환한다. meaning은 최대 600자, 이유는 최대 4개다. 각 이유는 text(독립적인 간결한 표현, 최대 240자), article_quote(실제 본문 연속 인용, 최대 2,000자), claim_ids, mention_ids, source_ids, article_span으로 구성한다.
 서버는 존재하지 않는 인용을 버리고 유효한 주장·근거 ID만 보존한다. source_ids는 연결된 실제 출처에서 서버가 채운다. 이유를 확인할 수 없으면 의미를 임의로 만들지 않고 빈 설명을 반환한다.
-TimelineItem에 label(최대 24자, 기본 빈 문자열), is_main_event(기본 false)를 추가하고 EventInfo에도 label을 추가한다. 날짜와 원문 description/article_quote는 보존한다. 서버는 유효한 사건 중 주요 사건 표시를 하나로 정리한다. API 경로·schema_version은 유지하며 응답·health·캐시의 data_version은 source-tracing-v1.8으로 통일한다.
+TimelineItem에 label(최대 24자, 기본 빈 문자열), is_main_event(기본 false)를 추가하고 EventInfo에도 label을 추가한다. 날짜와 원문 description/article_quote는 보존한다. 서버는 유효한 사건 중 주요 사건 표시를 하나로 정리한다. API 경로·schema_version은 유지하며 응답·health·캐시의 data_version은 source-tracing-v1.9으로 통일한다.
 
 ## 빠른 Preview (data_version 1.7)
 POST /api/preview는 완료된 전체 분석 캐시가 있으면 그 결과에서 응답을 만들고, 없으면 Gemini의 기사 추출까지만 수행한다. cold preview의 claims/major_evidence/sources는 빈 목록, search_status는 not_run이다. 이는 원출처 미발견이나 사실 확인이 아니다. 응답 필드는 호환성을 위해 유지한다. 이후 전체 분석과 같은 article_id/body_hash 및 추출 결과를 공유한다.
@@ -215,3 +215,9 @@ dictionary_status는 found(원문 확보 및 인용 확인), search_only(검색 
 RelatedArticle에 cited_by_article(boolean, 기본 false), 비교 point에 review_kind(none|claim_conflict|citation_difference, 기본 none), context_anchor(최대 120자), review_status(none|needs_confirmation|paired_excerpt, 기본 none)를 추가한다. 기존 응답은 기본값으로 호환한다.
 Gemini 후보 ComparisonCandidatePoint에는 review_status가 없다. 서버만 최종 상태를 부여한다. paired_excerpt는 body_excerpt 범위와 양쪽 인용에 실제 포함된 2자 이상 공통 표현이 필요하다. citation_difference는 서버가 확인한 cited_by_article=true가 필수다. 그 외 자료 범위/맥락 부족은 needs_confirmation이다. common이나 focus/context/topic의 단순 차이는 재확인 경고로 승격하지 않는다.
 클라이언트 파생 issue는 report_ids와 severity=caution|review를 추가해 정확한 보도 링크와 이동을 제공한다. review가 하나라도 있으면 전체 표시 level=review이며 미완료는 별도로 함께 표시한다. 점수·확률·사실/거짓 응답 필드는 없다.
+
+## 원격 main 통합 계약 (2026-11-14)
+- Claim/Mention의 translation은 원문과 분리한 선택적 한국어 AI 번역이다. 원문의 original_text/article_quote와 본문 이동은 그대로 유지한다.
+- ComparisonCandidatePoint/ReportComparisonPoint의 related_quote_ko(최대 700자), explanation(최대 300자)를 review_kind/context_anchor/review_status와 함께 보존한다. 번역과 차이 설명은 AI 생성이며 실제 원문 인용의 존재 검사를 대체하지 않는다.
+- RelatedArticle.original_candidate(boolean, 기본 false)는 공식 도메인·추정 영문 제목/번역 단어로 찾은 원문 후보를 나타낸다. 이 값으로 Source.original_status 또는 discovery를 승격하지 않는다. 실제 인용 관계인 cited_by_article, 원본 확인인 original_found와 별개다.
+- is_original/is_original_candidate는 서버가 비교 프롬프트에 보내는 구분이다. 후보의 인용 관계를 모델이 확정할 수 없다. 기존 API 경로는 유지하고 스키마/캐시/health 버전은 source-tracing-v1.9로 통일한다.
