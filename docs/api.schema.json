@@ -427,6 +427,19 @@
             "title": "Claim Text",
             "type": "string"
           },
+          "translation": {
+            "anyOf": [
+              {
+                "maxLength": 600,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Translation"
+          },
           "claim_type": {
             "enum": [
               "factual_narration",
@@ -696,6 +709,19 @@
           "article_quote": {
             "title": "Article Quote",
             "type": "string"
+          },
+          "translation": {
+            "anyOf": [
+              {
+                "maxLength": 600,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Translation"
           },
           "source_label": {
             "anyOf": [
@@ -1345,7 +1371,7 @@
         "type": "string"
       },
       "data_version": {
-        "default": "source-tracing-v1.7",
+        "default": "source-tracing-v1.8",
         "title": "Data Version",
         "type": "string"
       },
@@ -1769,6 +1795,19 @@
             "title": "Claim Text",
             "type": "string"
           },
+          "translation": {
+            "anyOf": [
+              {
+                "maxLength": 600,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Translation"
+          },
           "claim_type": {
             "enum": [
               "factual_narration",
@@ -1901,6 +1940,19 @@
           "article_quote": {
             "title": "Article Quote",
             "type": "string"
+          },
+          "translation": {
+            "anyOf": [
+              {
+                "maxLength": 600,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Translation"
           },
           "source_label": {
             "anyOf": [
@@ -2416,6 +2468,19 @@
             "title": "Claim Text",
             "type": "string"
           },
+          "translation": {
+            "anyOf": [
+              {
+                "maxLength": 600,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Translation"
+          },
           "claim_type": {
             "enum": [
               "factual_narration",
@@ -2548,6 +2613,19 @@
           "article_quote": {
             "title": "Article Quote",
             "type": "string"
+          },
+          "translation": {
+            "anyOf": [
+              {
+                "maxLength": 600,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Translation"
           },
           "source_label": {
             "anyOf": [
@@ -2999,7 +3077,7 @@
         "type": "string"
       },
       "data_version": {
-        "default": "source-tracing-v1.7",
+        "default": "source-tracing-v1.8",
         "title": "Data Version",
         "type": "string"
       },

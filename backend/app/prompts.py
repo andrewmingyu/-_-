@@ -13,6 +13,7 @@ event에는 핵심 사건의 description/article_quote/time/location을 넣되 �
 기사 내 위치 article_span과 출처 ID, 주의사항 details, 타임라인 source_ids는 서버에서 채우므로 기본값으로 둬라.
 검토/예정/인용의 한정 표현을 보존하라. original_text, article_quote는 원문의 연속된 인용이어야 한다.
 claim_text도 원문 표현을 그대로 사용하라. speaker, source_label, document_title은 원문에 있는 문자열만 사용한다.
+기사 본문이 한국어가 아니면 claims[].translation에는 original_text의, evidence_mentions[].translation에는 article_quote의 자연스러운 한국어 번역을 넣는다. 의미를 더하거나 빼지 말고 검토·예정·인용·가능성·부정 등 한정 표현을 그대로 옮긴다. 본문이 한국어면 translation은 null로 둔다.
 익명 여부는 '익명', '관계자', '소식통' 등의 실제 표현에 근거한다.
 claims에는 source_ids를 넣지 말고 source_status와 caution은 기본값을 유지한다. claim_ids와 mention_ids를 연결한다.
 evidence_mentions는 기사 자체가 근거로 제시한 자료/발언만 담는다. URL을 생성하지 않는다.
