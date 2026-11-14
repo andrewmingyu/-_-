@@ -966,6 +966,32 @@
             "minLength": 8,
             "title": "Related Quote",
             "type": "string"
+          },
+          "related_quote_ko": {
+            "anyOf": [
+              {
+                "maxLength": 700,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Related Quote Ko"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Explanation"
           }
         },
         "required": [

@@ -57,6 +57,7 @@ function validateRelatedReport(report) {
   for(const point of points){
     if(!['common','difference'].includes(point.kind)||!['topic','event','actors','time','figures','attribution','focus','context'].includes(point.aspect))throw new Error('보도 비교 유형 오류');
     for(const quote of [point.article_quote,point.related_quote])if(typeof quote!=='string'||Array.from(quote.trim()).length<8||Array.from(quote).length>600)throw new Error('보도 비교 인용 오류');
+    for(const extra of [point.related_quote_ko,point.explanation])if(extra!==undefined&&extra!==null&&(typeof extra!=='string'||Array.from(extra).length>700))throw new Error('보도 비교 설명 오류');
   }
 }
 export function validatePreview(p) {

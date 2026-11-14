@@ -178,7 +178,7 @@ SelectionAnalysis는 article_id, selected_text, is_demo, claims[], sources[], ca
 - Decision.details: {reason, source_ids[], claim_ids[]} 목록. 이유와 출처/주장을 연결하며 허구 참조는 거부한다. 기존 reasons[]도 유지한다.
 - RelatedArticle.topic/summary: 검색 주제 및 공급자 검색 요약. 독립성이나 주장의 진위 판정은 생성하지 않는다.
 - RelatedArticle.id: 검색 URL에서 서버가 부여한 report ID. comparison_basis는 body_excerpt/search_snippet/title_only/unknown, comparison_status는 not_compared/compared/insufficient/failed다.
-- comparison_points: {kind:common|difference, aspect:topic|event|actors|time|figures|attribution|focus|context, article_quote, related_quote}. 양쪽 실제 인용(8~600자)을 모두 확인한 항목만 최대 6개 저장한다. compared에는 report ID·확인된 비교 범위·비교 항목이 필요하다.
+- comparison_points: {kind:common|difference, aspect:topic|event|actors|time|figures|attribution|focus|context, article_quote, related_quote, related_quote_ko?, explanation?}. related_quote_ko·explanation은 선택이며 원문이 외국어일 때 번역과 달라진 점의 한 문장 설명이다(판정 표현 금지). 양쪽 실제 인용(8~600자)을 모두 확인한 항목만 최대 6개 저장한다. compared에는 report ID·확인된 비교 범위·비교 항목이 필요하다.
 - common은 공통 보도 항목, difference는 표현·강조 차이다. 근거의 지지/반박이나 진위 상태가 아니다. differences_summary는 검증된 항목의 종류를 서버가 짧게 조합한 설명이다.
 - 이전 응답의 비교 필드 생략은 id='', basis=unknown, status=not_compared, points=[]로 호환한다. 비교 실패는 related_comparison 단계 오류이며 기존 기사 목록을 유지한다.
 - ArticleAnalysis.section_states: context/metadata/claims/evidence/cautions/related의 {status,message}. status는 ready/empty/partial/error. 요청 중 loading은 클라이언트 표시 전용이다.

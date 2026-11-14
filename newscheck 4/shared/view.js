@@ -222,6 +222,25 @@ function credStrip(a) {
     '<p class="trace-note">사진 자료의 날짜는 읽지 못해 반영하지 않았어요.</p><p class="trace-note">' + esc(CRED_NOTE) + '</p></section>';
 }
 
+// 기사가 인용한 원문(원본으로 확인된 출처)과 비교해 서술이 달라진 부분을 첫 화면에 바로 보여 준다.
+function originalDiffs(a) {
+  const trim = u => String(u).replace(/\/$/, '');
+  const originals = new Set((a.sources || []).filter(s => s.original_status === 'original_found').map(s => trim(s.url)));
+  return (a.related_articles || []).filter(r => r.comparison_status === 'compared' && originals.has(trim(r.url)))
+    .map(r => ({ report: r, points: (r.comparison_points || []).filter(p => p.kind === 'difference') }))
+    .filter(x => x.points.length);
+}
+
+function diffCard(a) {
+  const groups = originalDiffs(a);
+  if (!groups.length) return '';
+  const total = groups.reduce((n, g) => n + g.points.length, 0);
+  return '<section class="card odiff" aria-label="원문과 다른 점"><h2>원문과 다른 점 ' + total + '건</h2>' + groups.map(g =>
+    '<p class="trace-headline">기사가 인용한 원문 ' + safeLink(g.report.url, g.report.title, a.is_demo) + '과 비교해 서술이 달라진 부분이에요.</p>' +
+    g.points.map(p => '<div class="odiff-point"><h3>' + esc(REPORT_ASPECTS[p.aspect] || '표현') + '</h3><div class="odiff-pair"><div><b>현재 기사</b><blockquote>' + esc(p.article_quote) + '</blockquote></div><div><b>원문</b><blockquote>' + esc(p.related_quote) + '</blockquote>' + (p.related_quote_ko ? '<b>한국어 번역</b><blockquote>' + esc(p.related_quote_ko) + '</blockquote>' : '') + '</div></div>' + (p.explanation ? '<p class="odiff-why"><b>무엇이 달라졌나요?</b> ' + esc(p.explanation) + '</p>' : '') + '</div>').join('')
+  ).join('') + '<p class="trace-note">AI가 두 본문의 구절을 짝지어 찾은 차이예요. 어느 쪽이 맞는지는 판단하지 않으니 직접 확인해 주세요.</p></section>';
+}
+
 function traceStrip(a) {
   const t = traceSummary(a);
   if (!t) return '';
@@ -239,7 +258,7 @@ function traceStrip(a) {
 export function renderAnalysis(container, a, expanded = new Set()) {
   const sections=sectionData(a);
   const summary=a.ui_state?'<p>'+esc(a.one_line_summary)+'</p>':'<ul class="summary-list">'+summaryLines(a.one_line_summary).map(line=>'<li>'+esc(line)+'</li>').join('')+'</ul>';
-  container.innerHTML = headlineCard(a,expanded) + (a.is_demo ? '<div class="demo-banner" role="status">시연용 예시 · 실제 기사나 실제 출처 분석 결과가 아닙니다.</div>' : '') + credStrip(a) + traceStrip(a) +
+  container.innerHTML = headlineCard(a,expanded) + (a.is_demo ? '<div class="demo-banner" role="status">시연용 예시 · 실제 기사나 실제 출처 분석 결과가 아닙니다.</div>' : '') + credStrip(a) + diffCard(a) + traceStrip(a) +
     '<div class="overview-grid"><div class="analysis-summary"><span>'+(a.ui_state==='loading'?'분석 중':a.ui_state==='error'?'분석 요청 실패':a.analysis_status==='partial'?'부분 분석':'출처 분석 완료')+'</span><h2>한 줄 요약</h2>'+summary+'</div>'+sectionMarkup(a,sections.find(s=>s.id==='metadata'),expanded)+'</div>'+errorList(a.pipeline_errors)+
     '<div class="analysis-grid">'+sections.filter(s=>s.id!=='metadata').map(s=>sectionMarkup(a,s,expanded)).join('')+'</div>'+
     '<div class="card"><h2>제목과 본문 표현의 차이</h2><p>' + esc(a.headline_difference) + '</p><p class="trace-note">' + esc(a.final_comment) + '</p><p class="muted">분석 시각: ' + esc(a.analyzed_at) + '</p></div>';

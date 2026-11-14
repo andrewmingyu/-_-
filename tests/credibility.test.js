@@ -51,3 +51,10 @@ test('loading and error screens produce nothing', () => {
   assert.equal(credibility({ ui_state: 'loading' }, NOW), null);
   assert.equal(badgeInfo({ ui_state: 'error' }, NOW), null);
 });
+
+test('attribution differences against the original lower the score more than other differences', () => {
+  const pts = (aspect) => ({ comparison_status: 'compared', comparison_points: [{ kind: 'common', aspect: 'topic' }, { kind: 'common', aspect: 'event' }, { kind: 'difference', aspect }] });
+  const withAttribution = credibility(base({ related_articles: [pts('attribution')] }), NOW);
+  const withFocus = credibility(base({ related_articles: [pts('focus')] }), NOW);
+  assert.ok(withAttribution.percent < withFocus.percent);
+});
