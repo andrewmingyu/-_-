@@ -381,6 +381,7 @@ button:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-
 
 /* 주장 번호 표시 (주장 1, 주장 1의 근거) */
 .trace-badge.claim-no { background:var(--accent-soft); color:var(--accent-text); margin-right:4px; }
+/* 원문 대조 카드 */
 .odiff-point { margin-top:10px; border-top:1px solid var(--line); }
 .odiff-point h3 { font-size:12.5px; margin:8px 0 6px; }
 .odiff-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -394,3 +395,7 @@ button:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-
 /* 외국어 기사의 AI 번역 */
 .translation { margin:6px 0; font-size:13px; line-height:1.6; }
 .translation .trace-badge { margin-right:4px; }
+
+/* 문장에 날짜가 없어 보도 시점(기사 작성일)으로 대신한 표시 */
+.context-date.context-date-report { color:var(--muted); font-weight:600; }
+.context-date .date-part { white-space:nowrap; }

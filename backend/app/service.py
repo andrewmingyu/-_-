@@ -5,6 +5,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
@@ -24,6 +25,58 @@ class EnglishQuery(BaseModel):
     document_title_en: str | None = None
     quotes_en: list[str] = []
 
+
+
+def grounded_date(date, quote):
+    """날짜가 원문 인용에 그대로 있거나, 날짜에 쓰인 숫자가 모두 원문에 있으면 인정한다 (예: 원문 'in 2007' → '2007년').
+    숫자가 없는 날짜(예: '지난주')는 원문에 그대로 있을 때만 인정해 추정을 막는다."""
+    date, quote = str(date or '').strip(), str(quote or '')
+    if not date or date == '시점 미확인':
+        return False
+    if date in quote:
+        return True
+    numbers = re.findall(r'\d+', date)
+    quote_numbers = set(re.findall(r'\d+', quote))
+    # 영어 달 이름(March, Mar.)도 숫자로 본다: 원문 'March 12' → '3월 12일' 인정
+    # 대문자로 시작하는 달 이름만 인정해 'may be'(~일지도) 같은 일반 단어를 달로 읽지 않는다
+    months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    quote_numbers |= {str(i + 1) for i, m in enumerate(months) if re.search(r'\b' + m + r'[a-z]*\.?(?=\s*\d)', quote)}
+    return bool(numbers) and all(n in quote_numbers or n.lstrip('0') in quote_numbers for n in numbers)
+
+
+DATE_PATTERNS = [
+    # 한국어: 2026년 11월 9일(현지시간), 11월 9일, 9일(현지 시간), 2007년, 지난 3월
+    r'(?:\d{4}년\s*)?(?:\d{1,2}월\s*)?\d{1,2}일(?:\s*\(현지\s*시간\))?',
+    r'\d{4}년(?:\s*\d{1,2}월)?',
+    r'(?:지난|오는)\s*\d{1,2}월',
+    # 영어: March 12, 2018 / Mar. 12 / 12 March 2018 / in 2007
+    r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:,\s*\d{4})?',
+    r'\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?(?:\s+\d{4})?',
+    r'\b(?:19|20)\d{2}\b',
+]
+
+
+def date_in_quote(quote):
+    """AI가 쓴 날짜가 원문에 없을 때, 원문 문장에 실제로 적힌 날짜 표현을 그대로 찾아 쓴다 (추정하지 않음)."""
+    quote = str(quote or '')
+    found = [(m.start(), m.group(0).strip()) for pattern in DATE_PATTERNS for m in re.finditer(pattern, quote)]
+    if not found:
+        return None
+    first = min(pos for pos, _ in found)
+    # 같은 위치에서 시작하는 표현 중 가장 긴 것 (예: '9일'보다 '11월 9일(현지시간)')
+    text = max((text for pos, text in found if pos == first), key=len)
+    return text + '년' if re.fullmatch(r'(?:19|20)\d{2}', text) else text
+
+
+def attribution_near(text, quote, label, window=200):
+    """출처 이름이 근거 인용 안에 있거나, 인용 바로 앞뒤(같은 문장 범위)에 있으면 인정한다.
+    영어 기사처럼 '"…," says Prof X'로 발언자가 인용 뒤에 붙는 경우를 위해서다."""
+    if label in quote:
+        return True
+    start = text.find(quote)
+    if start < 0:
+        return False
+    return label in text[max(0, start - window):start + len(quote) + window]
 
 
 def korean_translation(translation, original):
@@ -61,12 +114,56 @@ def publisher_names():
     return {domain:item['name'] for domain,item in json.loads(path.read_text(encoding='utf-8'))['outlets'].items()}
 
 
-def publisher_name(url, explicit=None):
+TITLE_SUFFIX = re.compile(r'\s[-|–—]\s*([^-|–—]{2,40}?)\s*$')
+
+
+def site_label(host):
+    """도메인에서 언론사 이름 후보(두 번째 단계 이름)만 뽑는다. news.bbc.co.uk -> bbc"""
+    parts=[p for p in host.lower().split('.') if p and p != 'www']
+    while len(parts) > 1 and (parts[-1] in ('com','net','org','co','or','go','ne','kr','uk','jp','au','eu','cn','news') or len(parts[-1]) <= 2):
+        parts.pop()
+    return parts[-1] if parts else ''
+
+
+def publisher_name(url, explicit=None, title=None):
+    """언론사 이름: 검색 결과에 적힌 이름 > 팀 언론사 목록(press.json) > 제목 끝 '- 언론사명'(도메인과 맞을 때만) > 도메인"""
     if isinstance(explicit,str) and explicit.strip():
         return explicit.strip()
-    host=urlsplit(url).hostname or ''
+    host=(urlsplit(url).hostname or '').lower()
     domains=publisher_names()
-    return next((domains[d] for d in sorted(domains,key=len,reverse=True) if host==d or host.endswith('.'+d)),None)
+    known=next((domains[d] for d in sorted(domains,key=len,reverse=True) if host==d or host.endswith('.'+d)),None)
+    if known:
+        return known
+    match=TITLE_SUFFIX.search(str(title or ''))
+    label=site_label(host)
+    if match and label:
+        suffix=match.group(1).strip()
+        compact=re.sub(r'[^0-9a-z가-힣]','',suffix.lower())
+        if len(label) >= 3 and (label in compact or (len(compact) >= 3 and compact in host.replace('.',''))):
+            return suffix
+    return re.sub(r'^www\.','',host) or None
+
+
+def same_article(url, title, page_url, page_title):
+    """검색 결과가 지금 읽는 기사 자신인지: 같은 주소(쿼리 차이 무시) 또는 같은 제목"""
+    a, b = urlsplit(str(url)), urlsplit(str(page_url))
+    if (a.hostname or '').removeprefix('www.') == (b.hostname or '').removeprefix('www.') and a.path.rstrip('/') == b.path.rstrip('/') and (not a.query or not b.query or a.query == b.query):
+        return True
+    core=lambda t: re.sub(r'\s*[-|–—]\s*[^-|–—]{2,40}$','',str(t or '')).strip()
+    return bool(core(title)) and core(title) == core(page_title)
+
+
+def iso_date(value):
+    """검색 결과 날짜를 ISO 형식으로 통일 (예: 'Sat, 13 Jul 2019 10:00:00 GMT' -> '2019-07-13T10:00:00+00:00')"""
+    if not value:
+        return None
+    text=str(value).strip()
+    if re.match(r'^\d{4}-\d{2}-\d{2}',text):
+        return text
+    try:
+        return parsedate_to_datetime(text).isoformat()
+    except (TypeError, ValueError, IndexError):
+        return None
 
 
 def body_hash(text):
@@ -247,7 +344,7 @@ class Analyzer:
             metadata['url'] = normalize_url(request.url)
         return body_hash(json.dumps([normalize_url(request.url), body_hash(request.page_text),
             request.title, metadata, clean_context(request.article_context,request.page_text).model_dump(mode='json'),
-            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.9', focus], ensure_ascii=False))
+            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.10', focus], ensure_ascii=False))
 
     def lookup(self, article_id, url=None):
         url = normalize_url(url) if url is not None else None
@@ -513,16 +610,16 @@ class Analyzer:
                         url = normalize_url(row['url'])
                     except (KeyError, TypeError, ValueError):
                         continue
-                    publisher=publisher_name(url,row.get('publisher'))
+                    publisher=publisher_name(url,row.get('publisher'),row.get('title'))
                     host = publisher or urlsplit(url).hostname
-                    if host in hosts or url == normalize_url(request.url):
+                    if host in hosts or url == normalize_url(request.url) or same_article(url,row.get('title'),request.url,request.title):
                         continue
                     hosts.add(host)
                     report_id = 'report_' + body_hash(url)[:16]
                     material, basis = comparison_material(row)
                     report_materials[report_id] = material
                     related.append(RelatedArticle(id=report_id, url=url, title=str(row.get('title') or ''),
-                        publisher=publisher, published_at=row.get('published_date'),
+                        publisher=publisher, published_at=iso_date(row.get('published_date')),
                         topic=request.title, summary=str(row.get('content') or '')[:400] or None,
                         comparison_basis=basis,
                         differences_summary='검색 결과 요약(기사 본문 비교 전): ' + str(row.get('content') or '내용 차이 미확인')[:250]))
@@ -546,7 +643,7 @@ class Analyzer:
                 report_materials[report_id] = material
                 related = [r for r in related if normalize_url(r.url) != cand['url']]
                 related.insert(0, RelatedArticle(id=report_id, url=cand['url'], title=cand['title'] or cand['url'],
-                    publisher=publisher_name(cand['url']) or urlsplit(cand['url']).hostname, published_at=cand['published_at'],
+                    publisher=publisher_name(cand['url'],None,cand['title']), published_at=iso_date(cand['published_at']),
                     topic=request.title, summary=cand['snippet'][:400] or None, comparison_basis=basis,
                     original_candidate=not verified,
                     differences_summary='원본 확인 자료(비교 전).' if verified else '원문 후보(인용 관계 미확인, 비교 전).'))
@@ -616,20 +713,20 @@ class Analyzer:
             m.claim_ids = [i for i in m.claim_ids if i in ids]
             m.description = m.article_quote
             m.translation = korean_translation(m.translation, m.article_quote)
-            m.source_label = m.source_label if m.source_label and m.source_label in m.article_quote else None
+            m.source_label = m.source_label if m.source_label and attribution_near(text, m.article_quote, m.source_label) else None
             m.document_title = m.document_title if m.document_title and m.document_title in text else None
             m.anonymous = bool(re.search(r'익명|관계자|소식통', m.article_quote))
             m.article_span = text_span(text,m.article_quote)
             mentions.append(m)
         extracted.claims, extracted.evidence_mentions = claims, mentions
         extracted.context_timeline = [t.model_copy(update={'description':t.article_quote, 'article_span':text_span(text,t.article_quote),
-            'date':t.date if t.date in t.article_quote else '시점 미확인','source_ids':[]}) for t in extracted.context_timeline if t.article_quote and t.article_quote in text]
+            'date':t.date if grounded_date(t.date, t.article_quote) else (date_in_quote(t.article_quote) or '시점 미확인'),'source_ids':[]}) for t in extracted.context_timeline if t.article_quote and t.article_quote in text]
         event = extracted.event
         if not event.article_quote or event.article_quote not in text:
             extracted.event = EventInfo()
         else:
             event.description = event.article_quote
-            event.time = event.time if event.time and event.time in event.article_quote else None
+            event.time = event.time if grounded_date(event.time, event.article_quote) else date_in_quote(event.article_quote)
             event.location = event.location if event.location and event.location in event.article_quote else None
         event = extracted.event
         matching = [i for i,t in enumerate(extracted.context_timeline) if event.article_quote and

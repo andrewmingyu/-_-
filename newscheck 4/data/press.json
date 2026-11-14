@@ -273,6 +273,279 @@
       "leaningSource": "",
       "leaningSourceUrl": "",
       "note": ""
+    },
+    "bbc.com": {
+      "name": "BBC",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "bbc.co.uk": {
+      "name": "BBC",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "cnn.com": {
+      "name": "CNN",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "reuters.com": {
+      "name": "Reuters",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "apnews.com": {
+      "name": "AP",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "nytimes.com": {
+      "name": "The New York Times",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "washingtonpost.com": {
+      "name": "The Washington Post",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "wsj.com": {
+      "name": "The Wall Street Journal",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "bloomberg.com": {
+      "name": "Bloomberg",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "cnbc.com": {
+      "name": "CNBC",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "theguardian.com": {
+      "name": "The Guardian",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "ft.com": {
+      "name": "Financial Times",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "economist.com": {
+      "name": "The Economist",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "theatlantic.com": {
+      "name": "The Atlantic",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "politico.com": {
+      "name": "Politico",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "politico.eu": {
+      "name": "Politico Europe",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "nbcnews.com": {
+      "name": "NBC News",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "abcnews.go.com": {
+      "name": "ABC News",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "cbsnews.com": {
+      "name": "CBS News",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "foxnews.com": {
+      "name": "Fox News",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "npr.org": {
+      "name": "NPR",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "aljazeera.com": {
+      "name": "Al Jazeera",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "france24.com": {
+      "name": "France 24",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "dw.com": {
+      "name": "DW",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "nhk.or.jp": {
+      "name": "NHK",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "scmp.com": {
+      "name": "South China Morning Post",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "nikkei.com": {
+      "name": "Nikkei",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "asia.nikkei.com": {
+      "name": "Nikkei Asia",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "japantimes.co.jp": {
+      "name": "The Japan Times",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "news.sky.com": {
+      "name": "Sky News",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "skynews.com.au": {
+      "name": "Sky News Australia",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "independent.co.uk": {
+      "name": "The Independent",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "telegraph.co.uk": {
+      "name": "The Telegraph",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "timesofisrael.com": {
+      "name": "The Times of Israel",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "axios.com": {
+      "name": "Axios",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "time.com": {
+      "name": "TIME",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "usatoday.com": {
+      "name": "USA Today",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "afp.com": {
+      "name": "AFP",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
+    },
+    "xinhuanet.com": {
+      "name": "Xinhua",
+      "leaning": "",
+      "leaningSource": "",
+      "leaningSourceUrl": "",
+      "note": ""
     }
   }
 }
