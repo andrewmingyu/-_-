@@ -48,6 +48,13 @@ function rejectLegacy(obj) {
   const scan = value => { if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) { if (banned.has(k)) throw new Error('이전 사실 판정 응답은 지원하지 않습니다.'); scan(v); } };
   scan(obj);
 }
+function validateRelatedVideo(video) {
+  const host = value => { try { return new URL(value).hostname.toLowerCase(); } catch { return ''; } };
+  const youtube = value => ['youtube.com', 'youtu.be'].some(d => host(value) === d || host(value).endsWith('.' + d));
+  if(!video||typeof video!=='object'||typeof video.id!=='string'||typeof video.title!=='string'||typeof video.channel!=='string'||typeof video.channel_label!=='string'||typeof video.url!=='string'||!youtube(video.url))throw new Error('관련 영상 형식 오류');
+  if(video.thumbnail_url!=null&&(typeof video.thumbnail_url!=='string'||!host(video.thumbnail_url).endsWith('ytimg.com')))throw new Error('관련 영상 썸네일 오류');
+  if(video.published_at!=null&&typeof video.published_at!=='string')throw new Error('관련 영상 날짜 오류');
+}
 function validateRelatedReport(report) {
   if(typeof report.url!=='string'||typeof report.title!=='string')throw new Error('관련 보도 형식 오류');
   if(report.comparison_basis!==undefined&&!['body_excerpt','search_snippet','title_only','unknown'].includes(report.comparison_basis))throw new Error('보도 비교 범위 오류');
@@ -106,6 +113,7 @@ export function validateAnalysis(a) {
   if (!envelope(a) || a.schema_version !== 'source-tracing-v1' || !a.article || typeof a.one_line_summary !== 'string' || !Array.isArray(a.claims) || !Array.isArray(a.sources) || !Array.isArray(a.evidence_mentions) || !Array.isArray(a.context_timeline) || !Array.isArray(a.related_articles) || !decision(a.caution)) throw new Error('분석 응답 형식이 올바르지 않습니다.');
   const ids = new Set(a.sources.map(s => s.id));
   for(const report of a.related_articles)validateRelatedReport(report);
+  if(a.related_videos!==undefined){if(!Array.isArray(a.related_videos)||a.related_videos.length>5)throw new Error('관련 영상 목록 오류');for(const video of a.related_videos)validateRelatedVideo(video);}
   for (const s of a.sources) if (!source(s)) throw new Error('출처 응답 형식 오류');
   for (const c of a.claims) if (!sourceStates.includes(c.source_status) || !decision(c.caution) || !Array.isArray(c.source_ids) || c.source_ids.some(id => !ids.has(id))) throw new Error('주장 출처 참조 오류');
   const claims=new Set(a.claims.map(c=>c.id));

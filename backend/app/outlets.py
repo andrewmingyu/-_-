@@ -25,6 +25,11 @@ OUTLETS = {
     'ytn': ['ytn.co.kr'], 'jtbc': ['jtbc.co.kr'], '연합뉴스tv': ['yonhapnewstv.co.kr'], '세계일보': ['segye.com'],
     '국민일보': ['kmib.co.kr'], '문화일보': ['munhwa.com'], '서울신문': ['seoul.co.kr'], '시사in': ['sisain.co.kr'],
     '프레시안': ['pressian.com'], '코리아헤럴드': ['koreaherald.com'], '코리아타임스': ['koreatimes.co.kr'],
+    # 인물·기관이 SNS 글로 직접 한 말은 그 SNS가 기사에 언급될 때만 해당 서비스 안에서 찾는다.
+    '트위터': ['x.com', 'twitter.com'], 'twitter': ['x.com', 'twitter.com'],
+    '페이스북': ['facebook.com'], 'facebook': ['facebook.com'],
+    '스레드': ['threads.com', 'threads.net'], 'threads': ['threads.com', 'threads.net'],
+    '인스타그램': ['instagram.com'], 'instagram': ['instagram.com'],
 }
 
 # 언론 보도를 비평·검증하는 매체. 기사가 언급한 외신·기관을 다룰 때 이 도메인 안에서만 "이 기사에 대한 지적"을 따로 찾는다.

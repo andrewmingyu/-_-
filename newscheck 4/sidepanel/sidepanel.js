@@ -1,6 +1,6 @@
 import { extractArticle, findQuote, markHeadline } from '../lib/extract.js';
 import { badgeInfo } from '../shared/summary.js';
-import { articleRequest, normalizeArticleUrl } from '../shared/article.js';
+import { articleRequest, normalizeArticleUrl, isNonArticlePage } from '../shared/article.js';
 import { renderAnalysis, renderAnalysisState, esc } from '../shared/view.js';
 import { validateAnalysis } from '../shared/api.js';
 const demo = new URLSearchParams(location.search).has('demo');
@@ -20,6 +20,11 @@ function show(result, tabId) {
   // 기사 페이지의 제목 옆에도 배지를 붙인다 (실패해도 패널 동작에는 영향 없음)
   const info = badgeInfo(result);
   if (!demo && tabId != null && info) chrome.scripting.executeScript({target:{tabId},func:markHeadline,args:[result.article.title,info]}).catch(() => {});
+}
+function headlineChip(tabId, title, label, headline) {
+  if (demo || tabId == null || !title) return;
+  const info = {label, caution:'', headline, lines:[], partial:false, note:'출처 확인은 주장의 진실성을 입증하지 않습니다.'};
+  chrome.scripting.executeScript({target:{tabId},func:markHeadline,args:[title,info]}).catch(() => {});
 }
 function state(message, retry = false) {
   content.innerHTML = '<div class="state" role="status"><p>' + esc(message) + '</p>' + (retry ? '<button id="retry" class="btn">다시 시도</button>' : '') + '</div>';
@@ -51,6 +56,7 @@ async function analyze(refresh = false) {
     else {
       const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
       if (!tab || !/^https?:/.test(tab.url || '')) throw new Error('지원하는 뉴스 기사 페이지를 열어 주세요.');
+      if (isNonArticlePage(tab.url)) { document.getElementById('article-head').hidden = true; state('이 페이지는 뉴스 기사가 아니어서 분석하지 않습니다. 기사 페이지를 열어 주세요.'); return; }
       activeTabId = tab.id;
       let extracted;
       try {
@@ -64,6 +70,8 @@ async function analyze(refresh = false) {
       const payload=articleRequest(extracted.result,refresh);
       activeMetadata=payload.metadata;
       renderAnalysisState(content,activeMetadata,'loading','기사의 근거와 출처를 분석하는 중입니다.',expanded);
+      // 분석하는 동안 기사 제목 옆에도 "분석 중…" 배지를 띄운다 (실패해도 패널 동작에는 영향 없음)
+      headlineChip(tab.id, extracted.result.title, '분석 중…', '기사의 근거를 확인하고 있어요. 잠시만 기다려 주세요.');
       const response = await chrome.runtime.sendMessage({type:'NEWSCHECK_ANALYZE',payload});
       if (!response?.ok) throw new Error(response?.error || '분석 서버에 연결하지 못했습니다.');
       result = response.data;
@@ -75,6 +83,7 @@ async function analyze(refresh = false) {
   } catch(e) {
     if (run !== generation) return;
     document.getElementById('article-head').hidden = true;
+    if(activeMetadata && activeTabId != null) headlineChip(activeTabId, activeMetadata.title, '분석 실패', '일시적으로 분석하지 못했어요. 다시 분석을 눌러 주세요.');
     if(activeMetadata)renderAnalysisState(content,activeMetadata,'error',e.message || '분석 요청에 실패했습니다.',expanded);
     else state(e.message || '분석 요청에 실패했습니다.',true);
   }

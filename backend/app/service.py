@@ -12,13 +12,14 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from pydantic import BaseModel
 from .models import (Article, ArticleAnalysis, Claim, Decision, Extraction, Source, RelatedArticle,
-                     SourceFacts, SourceReviews, AnalyzeRequest, SelectionAnalysis, TextSpan,
+                     SourceFacts, SourceReviews, AnalyzeRequest, RelatedVideo, SelectionAnalysis, TextSpan,
                      CautionDetail, ArticleContext, EventInfo, PipelineError, SectionState, ReportComparisons,
                      HeadlineExplanation, Preview)
 from .prompts import EXTRACT, TRACE, COMPARE_REPORTS
 from .report_comparison import comparison_material, apply_comparisons
 from .errors import ProviderError
 from .outlets import domains_for, CRITIC_DOMAINS
+from .videos import find_videos
 
 
 logger = logging.getLogger('uvicorn.error')
@@ -221,8 +222,14 @@ def title_matches(titles, page_title):
     추정값은 번역이라 어순·관사가 달라질 수 있어 연속 문자열이 아니라 단어 포함률로 비교한다. 본문은 보지 않는다."""
     words = lambda x: [w for w in re.sub(r'[^a-z0-9가-힣]+', ' ', str(x or '').casefold()).split() if w not in _TITLE_STOP]
     page = set(words(page_title))
+    from .outlets import OUTLETS
+    outlet_names = sorted((n for n in OUTLETS if n.isascii() and len(n) > 3), key=len, reverse=True)
     for title in titles:
-        ws = set(words(title))
+        # 영어 원제 추정값이 매체 이름뿐이면(예: "Wall Street Journal") 어느 페이지 제목에나 들어 있어 같은 자료로 볼 수 없다. 매체 이름은 비교에서 뺀다.
+        stripped = str(title or '')
+        for name in outlet_names:
+            stripped = re.sub(r'(?<![A-Za-z0-9])' + re.escape(name) + r'(?![A-Za-z0-9])', ' ', stripped, flags=re.I)
+        ws = set(words(stripped))
         if len(ws) >= 3 and len(ws & page) / len(ws) >= 0.85:
             return True
     return False
@@ -260,12 +267,42 @@ def text_matches(quotes, content):
     return text_coverage(quotes, content) >= 0.7
 
 
+def candidate_date(c):
+    """후보 자료의 날짜(발행일 또는 주소의 /YYYY/MM/DD/). 모르면 None."""
+    m = re.search(r'/(20\d{2})/(\d{1,2})/(\d{1,2})(?:/|$)', urlsplit(str(c.get('url'))).path)
+    try:
+        if m:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))).date()
+        if c.get('published_at'):
+            return datetime.fromisoformat(str(c['published_at'])[:10]).date()
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def near_article_date(c, article_date, days=3):
+    """후보가 기사 작성일 전후 며칠 안의 자료인지. 날짜를 알 수 없으면 None."""
+    d = candidate_date(c)
+    if d is None or article_date is None:
+        return None
+    return abs((d - article_date).days) <= days
+
+
+_NON_ARTICLE_SEGMENTS = frozenset('audio podcast podcasts video videos tag tags topic topics section sections category categories author authors search newsletter newsletters subscribe subscription login signin account about contact'.split())
+
+
+def looks_like_article_url(url):
+    """홈·섹션·팟캐스트·태그 목록처럼 기사 한 건이 아닌 주소는 원문 후보에서 뺀다."""
+    path = [p for p in urlsplit(str(url)).path.split('/') if p]
+    return bool(path) and not any(p.lower() in _NON_ARTICLE_SEGMENTS for p in path[:2])
+
+
 def best_original(candidates, outlet_domains, titles, quotes):
     """공식 도메인의 제목·본문 유사성이 가장 높은 원문 후보를 고른다. 실제 인용/원본 확인은 별도다."""
     best, best_score = None, 0.0
     for c in candidates:
         host = (urlsplit(c['url']).hostname or '').lower()
-        if not any(host == d or host.endswith('.' + d) for d in outlet_domains):
+        if not any(host == d or host.endswith('.' + d) for d in outlet_domains) or not looks_like_article_url(c['url']):
             continue
         score = 2.0 if title_matches(titles, c['title']) else text_coverage(quotes, c['content'])
         if score >= 0.7 and score > best_score:
@@ -354,12 +391,13 @@ def clean_context(context, text):
 
 
 class Analyzer:
-    def __init__(self, llm, search, mode='live', ttl=900, official=None):
+    def __init__(self, llm, search, mode='live', ttl=900, official=None, video=None):
         if mode == 'mock':
             from .mock import MockLLM, MockSearch
-            llm, search, official = MockLLM(), MockSearch(), None
+            llm, search, official, video = MockLLM(), MockSearch(), None, None
         self.llm, self.search, self.mode, self.ttl = llm, search, mode, ttl
         self.official = official  # 공식 공시 조회(DART 등). 없으면 건너뛴다.
+        self.video = video  # 유튜브 oEmbed 확인기. 없으면 관련 영상 검색을 건너뛴다.
         self.cache, self.inflight = {}, {}
         self.extractions, self.extracting = {}, {}
 
@@ -492,20 +530,32 @@ class Analyzer:
         if os.getenv('ORIGINAL_JUDGE', 'on').strip().lower() in ('off', 'false', '0') or not outlet_domains:
             return False, None
         # 본문 추출이 실패한 페이지도 검색 요약(snippet)이 있으면 판정 대상에 올린다.
-        pool = [c for c in candidates if (c['content'] or c.get('snippet')) and any(
+        pool = [c for c in candidates if (c['content'] or c.get('snippet')) and looks_like_article_url(c['url']) and any(
             (urlsplit(c['url']).hostname or '').lower() in (d,) or (urlsplit(c['url']).hostname or '').lower().endswith('.' + d)
             for d in outlet_domains)]
         # 같은 매체 페이지가 많을 수 있어, 영어 검색어·제목 단어와 가장 많이 겹치는 후보 4개만 판정에 올린다.
         words = {w for w in re.findall(r'[a-z0-9]{3,}', ' '.join(hints).casefold()) if w not in _TITLE_STOP}
         score = lambda c: len(words & set(re.findall(r'[a-z0-9]{3,}', (c['title'] + ' ' + (c['content'] or c.get('snippet') or '')[:800]).casefold())))
-        pool = sorted(pool, key=lambda c: (c['id'] != prefer, -score(c)))[:4]
+        pool = sorted(pool, key=lambda c: (c['id'] != prefer, -score(c)))
+        # 점수 상위 4개를 한두 매체(예: CNN·NYT)가 독차지하면 다른 언급 매체(예: WSJ)의 기사는 판정 기회를 잃는다.
+        # 그래서 언급된 매체마다 가장 점수가 높은 후보를 먼저 한 건씩 넣고, 남는 자리를 점수순으로 채운다(최대 6개).
+        host_of = lambda c: (urlsplit(c['url']).hostname or '').lower()
+        chosen = []
+        for d in outlet_domains:
+            best = next((c for c in pool if c not in chosen and (host_of(c) == d or host_of(c).endswith('.' + d))), None)
+            if best is not None:
+                chosen.append(best)
+        pool = (chosen + [c for c in pool if c not in chosen])[:max(4, min(6, len(chosen)))]
+        pool = sorted(pool, key=lambda c: (c['id'] != prefer, -score(c)))
         if not pool:
             logger.info('원문 후보 판정: 매체 도메인 후보가 없어 건너뜁니다.')
             return False, None
         try:
-            out = await self.llm.generate('한국어 기사가 외국 매체·기관의 보도를 옮겨 전하고 있다. candidates 중 이 기사가 옮긴 바로 그 보도(같은 사건, '
-                '같은 발언·주장이 실려 있는 원문)가 있으면 그 id를 original_id에 적어라. 같은 주제의 다른 기사이거나 확신이 없으면 null로 두어라. '
-                'reason에는 두 글이 같은 보도라고 본 근거를 한 문장으로 적어라. 사실을 추가하지 마라.',
+            out = await self.llm.generate('한국어 기사가 외국 매체·기관의 보도를 옮겨 전하고 있다. candidates 중 이 기사가 옮긴 보도의 원문 후보로 보여 줄 만한 것을 고른다. '
+                '기준: 같은 매체가 같은 사건을 다루고, 기사가 전한 핵심 내용(발생 시각·수치·발언 등)과 서로 충돌하는 부분이 없으면 후보로 고르고 그 id를 original_id에 적어라. '
+                '일부 세부 내용이 후보 글에 없는 것만으로는 탈락시키지 마라(요약·갱신 때문일 수 있다). '
+                '다른 사건이거나 핵심 내용이 명확히 충돌하거나 홈·목록 페이지이면 null로 두어라. 이는 "원문 후보"일 뿐 원본 확인이 아니다. '
+                'reason에는 같은 사건으로 본 근거를 한 문장으로 적어라. 사실을 추가하지 마라.',
                 {'article_title': request.title, 'article_body': request.page_text[:1500],
                  'candidates': [{'id': c['id'], 'url': c['url'], 'title': c['title'], 'text': (c['content'] or c.get('snippet') or '')[:1500]} for c in pool]},
                 OriginalJudgement)
@@ -515,7 +565,7 @@ class Analyzer:
             return False, None
         picked = getattr(out, 'original_id', None)
         picked = picked if picked in {c['id'] for c in pool} else None
-        logger.info('원문 후보 판정: 후보 %d개(%s) → %s', len(pool), ', '.join(urlsplit(c['url']).path[-30:] for c in pool),
+        logger.info('원문 후보 판정: 후보 %d개(%s) → %s', len(pool), ', '.join(c['url'].split('?')[0] for c in pool),
                     next((c['url'] for c in pool if c['id'] == picked), '없음'))
         return True, picked
 
@@ -555,6 +605,10 @@ class Analyzer:
         # 기사를 낸 매체 자신의 도메인은 제외한다(자기 사이트를 다시 검색해도 같은 기사만 나온다).
         named_domains = [d for d in domains_for(f'{request.title or ""} {mention_text} {request.page_text[:3000]}')
                          if not (own_host == d or own_host.endswith('.' + d))]
+        # "WSJ에 따르면"처럼 기사가 근거로 직접 기대는 매체(근거 언급의 출처명·제목에 나온 매체)를 맨 앞으로 올려 먼저 찾고 먼저 가져온다.
+        attributed = [d for d in domains_for(f'{request.title or ""} {mention_text}') if d in named_domains]
+        named_domains = attributed + [d for d in named_domains if d not in attributed]
+        logger.info('기사가 언급한 매체·기관 도메인: %s', ', '.join(named_domains) or '없음')
         english, english_titles, english_quotes = await self._english_query(request, mentions) if os.getenv('ENGLISH_SEARCH', 'on').strip().lower() not in ('off', 'false', '0') else (None, [], [])
         if english and english not in queries:
             queries.append(english)
@@ -577,6 +631,27 @@ class Analyzer:
             for kind, text in (('outlet_ko', request.title[:120]), ('outlet_en', english)):
                 if text:
                     outlet_tasks.append((kind, asyncio.ensure_future(scoped_search(text, named_domains))))
+        # 공식 방송사·외신 채널의 관련 영상을 찾는다(끄려면 VIDEO_SEARCH=off, 개수는 VIDEO_LIMIT, 기본 3).
+        video_task = None
+        search_videos = getattr(self.search, 'search_videos', None)
+        if not focus and self.video and search_videos and request.title and os.getenv('VIDEO_SEARCH', 'on').strip().lower() not in ('off', 'false', '0'):
+            video_words = {w for w in re.findall(r'[a-z0-9]{3,}', ' '.join([english or ''] + list(english_titles)).casefold()) if w not in _TITLE_STOP}
+            article_year = int(m.group(0)) if (m := re.search(r'(?:19|20)\d{2}', (request.metadata.published_at if request.metadata else '') or '')) else None
+            ko_tokens = {w for w in re.findall(r'[0-9A-Za-z가-힣]{2,}', request.title.casefold())}
+            ko_needed = max(3, min(4, (len(ko_tokens) + 1) // 2))
+            def video_relevant(kind, row):
+                # 영상 제목에 적힌 연도가 기사 연도와 2년 이상 다르면 같은 사건의 영상으로 보지 않는다.
+                if article_year:
+                    years = [int(y) for y in re.findall(r'(?<!\d)((?:19|20)\d{2})(?!\d)', str(row.get('title') or ''))]
+                    if years and all(abs(y - article_year) >= 2 for y in years):
+                        return False
+                return english_relevant(row, video_words) if kind == 'en' else title_overlap(row, request.title, ko_needed)
+            try:
+                video_limit = min(5, max(1, int(os.getenv('VIDEO_LIMIT', '3'))))
+            except ValueError:
+                video_limit = 3
+            video_task = asyncio.ensure_future(find_videos(search_videos, self.video,
+                [('ko', request.title[:100])] + ([('en', english)] if english else []), video_relevant, video_limit, one_per_channel=True))
         # 이 기사를 비평·정정한 글(미디어 비평 매체)을 그 매체 도메인 안에서만 찾는다(끄려면 CRITIC_SEARCH=off).
         own_publisher = publisher_name(str(request.url), None, request.title) or ''
         critic_task = None
@@ -599,6 +674,27 @@ class Analyzer:
         # 검색어마다 순서대로 기다리지 않고 한꺼번에 실행한다(결과는 검색어 순서대로 처리).
         fetched = await asyncio.gather(*(fetch(q) for q in queries), *(fetch(q, True) for q in scoped_extra))
         batches = list(zip(queries + scoped_extra, fetched))
+        # 여러 매체를 한 번에 검색하면 결과 상위 5건을 한두 매체가 차지해 다른 매체(예: WSJ) 기사가 빠질 수 있다.
+        # 결과에 한 건도 없는 매체 도메인만 골라, 그 도메인 안에서 영어 검색어(없으면 제목)로 따로 한 번씩 더 찾는다(최대 3곳).
+        single_scope = getattr(self.search, 'search_in', None)
+        if single_scope and len(named_domains) > 1 and (english or request.title):
+            seen_hosts = {(urlsplit(str(r.get('url'))).hostname or '').lower() for _, (got, err) in batches if err is None for r in (got or [])}
+            gaps = [d for d in named_domains if not any(h == d or h.endswith('.' + d) for h in seen_hosts)][:3]
+            from .outlets import OUTLETS
+            async def gap_fetch(domain):
+                # 영어 검색어에 다른 매체 이름(예: CNN)이 들어 있으면 이 매체 안에서의 검색이 흐려지므로 그 이름은 뺀다.
+                query = english or request.title
+                for name, doms in OUTLETS.items():
+                    if name.isascii() and domain not in doms:
+                        query = re.sub(r'(?<![A-Za-z0-9])' + re.escape(name) + r'(?![A-Za-z0-9])', ' ', query, flags=re.I)
+                query = ' '.join(query.split()) or request.title
+                try:
+                    return list(await single_scope(query[:150], [domain])), None
+                except Exception:
+                    return [], None  # 보조 검색 실패는 원출처 검색 상태에 영향을 주지 않는다.
+            if gaps:
+                for domain, result in zip(gaps, await asyncio.gather(*(gap_fetch(d) for d in gaps))):
+                    batches.append((english or request.title, result))
         if self.official:
             try:  # 공식 자료 조회 실패는 원출처 검색 상태에 영향을 주지 않는다.
                 batches.append((None, (await self.official.search(request.title, request.page_text), None)))
@@ -627,7 +723,9 @@ class Analyzer:
                     candidates[url] = candidate
         search_status = 'failed' if search_errors else 'completed' if queries else 'not_run'
         # 원문 추출은 3건까지만 되므로, 기사가 언급한 매체 도메인 자료를 먼저 가져온다.
-        outlet_first = lambda u: not any((urlsplit(u).hostname or '').lower() == d or (urlsplit(u).hostname or '').lower().endswith('.' + d) for d in named_domains)
+        def outlet_first(u):
+            host = (urlsplit(u).hostname or '').lower()
+            return next((i for i, d in enumerate(named_domains) if host == d or host.endswith('.' + d)), len(named_domains))
         pending = sorted([c['url'] for c in candidates.values() if not c['content']], key=outlet_first)[:3]
         if pending and hasattr(self.search,'extract'):
             try:
@@ -697,7 +795,7 @@ class Analyzer:
             decision = combine_decisions([decision,Decision(status='caution',reasons=['본문 길이 제한으로 추출된 앞부분만 분석했습니다. 전체 기사를 추가 확인해 주세요.'])])
         if search_errors:
             decision = combine_decisions([decision, Decision(status='unknown', reasons=search_errors)])
-        related, report_materials = [], {}
+        related, report_materials, related_videos = [], {}, []
         if request.title and not focus:
             try:
                 rows = list(await related_task)
@@ -772,7 +870,28 @@ class Analyzer:
             if judged:
                 candidate_id = judged
             elif judged_ok:
-                candidate_id = None  # 약한 근거로 고른 후보를 AI가 같은 보도가 아니라고 하면 버린다
+                try:
+                    article_date = datetime.fromisoformat((request.metadata.published_at if request.metadata else '')[:10]).date()
+                except (ValueError, TypeError):
+                    article_date = None
+                strict = os.getenv('ORIGINAL_JUDGE_STRICT', 'off').strip().lower() in ('on', 'true', '1')
+                # AI가 같은 보도로 확신하지 못해도, 인용문이 겹치고 기사 작성일 전후(3일)의 자료이면 "원문 후보"로 남긴다. 날짜가 어긋나면 다른 사건이므로 버린다.
+                if candidate_id and (strict or near_article_date(by_id[candidate_id], article_date) is False):
+                    candidate_id = None
+                elif not candidate_id and not strict and article_date:
+                    # 약한 근거 후보도 없으면 기사 작성일 전후의 같은 매체 자료 중 영어 검색어와 가장 겹치는 하나를 후보로 남긴다.
+                    words = {w for w in re.findall(r'[a-z0-9]{3,}', ' '.join([english or ''] + list(english_titles)).casefold()) if w not in _TITLE_STOP}
+                    rank = lambda c: (next((i for i, d in enumerate(named_domains) if (urlsplit(c['url']).hostname or '').lower().endswith(d)), 99),
+                                      -len(words & set(re.findall(r'[a-z0-9]{3,}', (c['title'] + ' ' + (c['content'] or c['snippet'])[:800]).casefold()))))
+                    near = [c for c in candidates.values() if c['content'] and looks_like_article_url(c['url'])
+                            and any((urlsplit(c['url']).hostname or '').lower().endswith(d) for d in named_domains)
+                            and near_article_date(c, article_date) is True]
+                    if near and -rank(min(near, key=rank))[1] >= 2:
+                        candidate_id = min(near, key=rank)['id']
+                if candidate_id:
+                    logger.info('원문 후보: AI는 같은 보도로 확신하지 못했지만 기사 작성일 전후의 같은 매체 자료를 "원문 후보"로 유지합니다 → %s', by_id[candidate_id]['url'])
+                else:
+                    logger.info('원문 후보: AI가 같은 보도가 아니라고 판단했고 날짜가 맞는 대체 후보도 없어 비웁니다.')
         for s in sorted(sources, key=lambda s:s.id != candidate_id):
             cand = by_id.get(s.id)
             verified = s.discovery == 'article_cited' and s.original_status == 'original_found' and bool(s.mention_ids)
@@ -791,6 +910,56 @@ class Analyzer:
                 if verified:original_ids.add(report_id)
                 del related[5:]
                 break
+        # "CNN에 따르면"·"WSJ에 따르면"처럼 기사가 매체를 직접 근거로 든 주장마다, 그 매체의 자료 중 날짜가 맞고 내용이 가장 겹치는 기사를 원문 후보로 더 올린다.
+        # (AI 판정이 흔들려도 같은 결과가 나오도록 날짜·단어 겹침으로 정한다. 후보일 뿐 원본 확인이 아니다.)
+        if not focus and request.title:
+            try:
+                art_date = datetime.fromisoformat((request.metadata.published_at if request.metadata else '')[:10]).date()
+            except (ValueError, TypeError):
+                art_date = None
+            host_of = lambda c: (urlsplit(c['url']).hostname or '').lower()
+            in_domain = lambda c, d: host_of(c) == d or host_of(c).endswith('.' + d)
+            have = {d for d in named_domains if candidate_id and in_domain(by_id[candidate_id], d)}
+            hint_words = {w for w in re.findall(r'[a-z0-9]{3,}', ' '.join([english or ''] + list(english_titles) + list(english_quotes)).casefold()) if w not in _TITLE_STOP}
+            wanted = []
+            for m in mentions:
+                for d in domains_for(f'{m.source_label or ""} {m.document_title or ""}'):
+                    if d in named_domains and d not in have and d not in wanted:
+                        wanted.append(d)
+            extras = []
+            for d in wanted[:3]:
+                pool = [c for c in candidates.values() if c['content'] and looks_like_article_url(c['url']) and in_domain(c, d)
+                        and (near_article_date(c, art_date) is True)]
+                overlap = lambda c: len(hint_words & set(re.findall(r'[a-z0-9]{3,}', (c['title'] + ' ' + c['content'][:1500]).casefold())))
+                best = max(pool, key=overlap, default=None)
+                if best is not None and overlap(best) >= 2 and best['url'] not in {x['url'] for x in extras}:
+                    extras.append(best)
+            for cand in extras:
+                if any(normalize_url(r.url) == cand['url'] for r in related):
+                    continue
+                row = {'url': cand['url'], 'title': cand['title'], 'content': cand['snippet'], 'raw_content': cand['content']}
+                report_id = 'report_' + body_hash(cand['url'])[:16]
+                material, basis = comparison_material(row)
+                report_materials[report_id] = cand['content'][:16000]
+                related.insert(min(len(related), 1 if candidate_id else 0), RelatedArticle(id=report_id, url=cand['url'], title=cand['title'] or cand['url'],
+                    publisher=publisher_name(cand['url'], None, cand['title']), published_at=iso_date(cand['published_at']),
+                    topic=request.title, summary=cand['snippet'][:400] or None, comparison_basis=basis, original_candidate=True,
+                    differences_summary='기사가 근거로 든 매체의 같은 시기 보도(원문 후보, 인용 관계 미확인, 비교 전).'))
+                logger.info('원문 후보(매체별): 기사가 근거로 든 %s의 같은 시기 보도 → %s', host_of(cand), cand['url'])
+            del related[5:]
+        if video_task:
+            try:
+                for item in await video_task:
+                    try:
+                        related_videos.append(RelatedVideo(id='video_' + item['video_id'], url=item['url'], title=item['title'][:300],
+                            channel=item['channel'][:120], channel_label=item['channel_label'],
+                            thumbnail_url=item['thumbnail'] or f"https://i.ytimg.com/vi/{item['video_id']}/hqdefault.jpg",
+                            published_at=iso_date(item['published_at']) if item.get('published_at') else None))
+                    except Exception:
+                        continue  # 형식이 맞지 않는 영상 하나는 건너뛴다.
+                logger.info('관련 영상: 공식 채널 %d개%s', len(related_videos), (' → ' + ', '.join(v.channel_label for v in related_videos)) if related_videos else '')
+            except Exception:
+                pass  # 영상 검색 실패는 분석 결과에 영향을 주지 않는다.
         if related:
             comparison_reports = related[:3]
             try:
@@ -825,7 +994,7 @@ class Analyzer:
             analysis_status='partial' if request.article_context.body_truncated or search_errors or decision.status == 'unknown' or any(s.unknown_fields for s in sources) else 'complete',
             is_demo=self.mode=='mock', article=metadata, one_line_summary=extracted.summary, claims=claims, evidence_mentions=mentions,
             headline_explanation=extracted.headline_explanation,
-            context_timeline=extracted.context_timeline, sources=sources, caution=decision, related_articles=related,
+            context_timeline=extracted.context_timeline, sources=sources, caution=decision, related_articles=related, related_videos=related_videos,
             headline_difference=extracted.headline_difference, search_status=search_status, search_errors=search_errors,
             final_comment=('규칙·fixture 기반 시연용 분석입니다. ' if self.mode=='mock' else '')+'출처 확인이나 주의사항 부재는 주장 진실성의 입증이 아닙니다.', analyzed_at=now_iso(),
             event=extracted.event, article_context=request.article_context, section_states=states, pipeline_errors=pipeline_errors)

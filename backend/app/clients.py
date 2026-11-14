@@ -218,6 +218,14 @@ class Tavily:
         self.log_search('지정 사이트', query, self.depth(), rows)
         return rows
 
+    async def search_videos(self, query):
+        # 유튜브 영상 후보만 가볍게 찾는다(본문 불필요). 영상 확인은 oEmbed가 한다.
+        rows = await self._request('search', {'query': query, 'topic': 'general', 'max_results': 8,
+            'include_raw_content': False, 'include_answer': False, 'search_depth': 'basic',
+            'include_domains': ['youtube.com']})
+        self.log_search('유튜브', query, 'basic', rows)
+        return rows
+
     async def extract(self, urls):
         # Called only for URLs already returned by search; the server never fetches arbitrary URLs.
         rows = await self._request('extract', {'urls': urls[:3], 'include_images': False})

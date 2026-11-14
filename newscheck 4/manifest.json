@@ -51,6 +51,12 @@
         "https://*/*",
         "http://*/*"
       ],
+      "exclude_matches": [
+        "https://www.youtube.com/*",
+        "https://m.youtube.com/*",
+        "https://youtube.com/*",
+        "https://music.youtube.com/*"
+      ],
       "js": [
         "content.js"
       ],

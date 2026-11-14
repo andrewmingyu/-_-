@@ -966,6 +966,75 @@
         "title": "RelatedArticle",
         "type": "object"
       },
+      "RelatedVideo": {
+        "additionalProperties": false,
+        "description": "공식 방송사·외신 채널의 관련 영상. 기사가 인용한 출처가 아니며, 영상 내용이 맞는지는 판단하지 않는다.",
+        "properties": {
+          "id": {
+            "maxLength": 40,
+            "title": "Id",
+            "type": "string"
+          },
+          "url": {
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "title": "Title",
+            "type": "string"
+          },
+          "channel": {
+            "maxLength": 120,
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_label": {
+            "maxLength": 60,
+            "title": "Channel Label",
+            "type": "string"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "maxLength": 2083,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Thumbnail Url"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Published At"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "title",
+          "channel",
+          "channel_label"
+        ],
+        "title": "RelatedVideo",
+        "type": "object"
+      },
       "ReportComparisonPoint": {
         "additionalProperties": false,
         "properties": {
@@ -1504,6 +1573,14 @@
           "$ref": "#/$defs/RelatedArticle"
         },
         "title": "Related Articles",
+        "type": "array"
+      },
+      "related_videos": {
+        "items": {
+          "$ref": "#/$defs/RelatedVideo"
+        },
+        "maxItems": 5,
+        "title": "Related Videos",
         "type": "array"
       },
       "headline_difference": {

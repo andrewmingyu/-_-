@@ -1,6 +1,6 @@
 """Source tracing contract. No claim truth, probability or entailment fields."""
 from typing import Annotated, Literal
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 SourceStatus = Literal['original_found', 'secondary_only', 'source_not_found', 'unknown']
 CautionStatus = Literal['caution', 'none_identified', 'unknown']
@@ -232,6 +232,32 @@ class RelatedArticle(Model):
         return self
 
 
+class RelatedVideo(Model):
+    """공식 방송사·외신 채널의 관련 영상. 기사가 인용한 출처가 아니며, 영상 내용이 맞는지는 판단하지 않는다."""
+    id: str = Field(max_length=40)
+    url: HttpUrl
+    title: str = Field(max_length=300)
+    channel: str = Field(max_length=120)
+    channel_label: str = Field(max_length=60)
+    thumbnail_url: HttpUrl | None = None
+    published_at: str | None = None
+
+    @field_validator('url')
+    @classmethod
+    def url_is_youtube(cls, value):
+        host = (value.host or '').lower()
+        if not any(host == d or host.endswith('.' + d) for d in ('youtube.com', 'youtu.be')):
+            raise ValueError('Related video URL must be a YouTube URL')
+        return value
+
+    @field_validator('thumbnail_url')
+    @classmethod
+    def thumbnail_is_ytimg(cls, value):
+        if value is not None and not (value.host or '').lower().endswith('ytimg.com'):
+            raise ValueError('Thumbnail must be hosted by YouTube')
+        return value
+
+
 class ArticleAnalysis(Model):
     schema_version: Literal['source-tracing-v1'] = 'source-tracing-v1'
     data_version: str = 'source-tracing-v1.10'
@@ -248,6 +274,7 @@ class ArticleAnalysis(Model):
     sources: list[Source] = Field(default_factory=list)
     caution: Decision
     related_articles: list[RelatedArticle] = Field(default_factory=list)
+    related_videos: list[RelatedVideo] = Field(default_factory=list, max_length=5)
     headline_difference: str
     final_comment: str
     search_status: SearchStatus
