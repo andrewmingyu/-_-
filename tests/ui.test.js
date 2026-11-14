@@ -6,58 +6,6 @@ import { renderAnalysis, renderAnalysisState, renderPreview, renderSelection, sa
 import { validateAnalysis, validateSelection, validatePreview, requestAnalysis, backendUrl } from '../newscheck 4/shared/api.js';
 const fixture=JSON.parse(fs.readFileSync(new URL('../newscheck 4/data/demo.json',import.meta.url),'utf8'));
 
-test('caution details merge repeated explanations while preserving distinct facts and all references',()=>{
-  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),a=structuredClone(fixture);
-  a.sources.push({...structuredClone(a.sources[0]),id:'src_second',title:'별도 발행 자료',url:'https://source.example/second'});
-  const reason='자료 작성자의 이해관계 관련 문구를 확인했습니다: 공급사 지원';
-  a.caution={status:'caution',reasons:[reason,reason+' ', '자료는 기사 작성일보다 800일 이전입니다.','원본 자료 확인은 주장의 진실성을 입증하지 않습니다.'],details:[
-    {reason,source_ids:[a.sources[0].id],claim_ids:[a.claims[0].id]},
-    {reason:reason+' .',source_ids:[a.sources[1].id],claim_ids:[a.claims[1].id]}
-  ]};
-  renderAnalysis(root,a,new Set(['cautions']));
-  const details=root.querySelector('#details-cautions');
-  assert.equal([...details.querySelectorAll('.caution-item')].filter(el=>el.textContent.includes('공급사 지원')).length,1);
-  assert.match(details.textContent,/800일/);
-  for(const source of a.sources)assert.ok(details.textContent.includes(source.title));
-  assert.match(details.textContent,/주장 1 · 주장 2/);
-  assert.ok(![...details.querySelectorAll('.caution-item')].some(el=>el.textContent.includes('원본 자료 확인은')),'Generic truth disclaimer belongs in the footer, not in the issue list');
-  assert.doesNotMatch(details.textContent,/추가로 확인하면 좋은 자료|원문 전체, 조사 방법, 최신 발행본|확인된 정보 없음/);
-});
-
-test('caution details consolidate missing fields and search failures without repeated empty categories',()=>{
-  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),a=structuredClone(fixture);
-  a.claims=[];a.evidence_mentions=[];
-  a.sources.forEach(s=>s.unknown_fields=['작성자','전문 분야','작성자']);
-  const error='검색된 자료의 원문 확보 요청이 실패했습니다.';
-  a.search_errors=[error,error];
-  a.caution={status:'unknown',reasons:[
-    '출처 속성을 확인하지 못했습니다: 작성자, 전문 분야',
-    '출처 속성을 확인하지 못했습니다: 작성자',
-    error,'원출처 검색 요청이 실패하여 분석이 불완전합니다.'
-  ],details:[]};
-  renderAnalysis(root,a,new Set(['cautions']));
-  const details=root.querySelector('#details-cautions');
-  assert.deepEqual([...details.querySelectorAll('h3')].map(el=>el.textContent),['확인하지 못한 출처 정보','분석 중 발생한 문제']);
-  assert.equal(details.textContent.split('작성자').length-1,1);
-  assert.equal(details.textContent.split(error).length-1,1);
-  assert.equal(details.querySelectorAll('a').length,0,'demo source links must stay disabled');
-  assert.doesNotMatch(details.textContent,/출처 속성을 확인하지|확인된 정보 없음/);
-  assert.ok(!details.textContent.includes(fixture.claims[0].original_text));
-});
-
-test('no identified caution shows only its state and disclaimer, and caution HTML remains escaped',()=>{
-  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),a=structuredClone(fixture);
-  a.sources=[];a.search_errors=[];a.claims=[];a.evidence_mentions=[];
-  a.caution={status:'none_identified',reasons:['확보한 출처 정보에서 별도의 주의사항을 발견하지 못했습니다. 주장 진위의 판정은 아닙니다.']};
-  renderAnalysis(root,a,new Set(['cautions']));
-  assert.equal(root.querySelector('#details-cautions h3'),null);
-  assert.equal(root.querySelectorAll('#details-cautions .trace-note').length,1);
-  a.caution={status:'caution',reasons:['<img src=x onerror=alert(1)>']};
-  renderAnalysis(root,a,new Set(['cautions']));
-  assert.equal(root.querySelector('#details-cautions img'),null);
-  assert.match(root.querySelector('#details-cautions').textContent,/<img/);
-});
-
 test('headline meaning and reasons have separate headings and reasons retain meaning as brief phrases',()=>{
   const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
   renderAnalysis(root,fixture);
@@ -90,18 +38,19 @@ test('headline meaning is first, reasons are plain bullets and evidence jumps pr
   const toggle=root.querySelector('[data-headline-toggle]');toggle.click();
   assert.equal(root.querySelector('#headline-details').hidden,false);
   root.querySelector('[data-headline-jump="0"]').click();
-  assert.equal(root.querySelector('#details-evidence').hidden,false);
+  assert.equal(root.querySelector('#details-claims').hidden,false);
   assert.equal(root.querySelector('[data-toggle="claims"]').getAttribute('aria-expanded'),'true');
   assert.equal(document.activeElement.id,'evidence-mention-'+fixture.headline_explanation.reasons[0].mention_ids[0]);
-  assert.equal(root.querySelectorAll('[data-toggle]').length,6);
+  assert.equal(root.querySelectorAll('[data-toggle]').length,4);
 });
 
-test('headline reasons without linked sources lead to source overview and missing legacy fields remain usable',()=>{
+test('headline reasons without linked sources lead to the claims card and missing legacy fields remain usable',()=>{
   const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),data=structuredClone(fixture);
   Object.assign(data.headline_explanation.reasons[0],{mention_ids:[],source_ids:[]});
   renderAnalysis(root,data,new Set(['headline']));
   root.querySelector('[data-headline-jump="0"]').click();
-  assert.equal(document.activeElement.id,'trace-overview');
+  assert.equal(document.activeElement.dataset.section,'claims');
+  assert.equal(root.querySelector('.trace-strip'),null,'근거 확인 현황 카드는 표시하지 않음');
   delete data.headline_explanation;
   assert.equal(validateAnalysis(data),data);renderAnalysis(root,data);
   assert.match(root.querySelector('.headline-explanation').textContent,/제목 설명이 아직 없습니다/);
@@ -140,12 +89,12 @@ test('context boxes use short phrases with a separate date and one emphasized ma
   assert.equal(root.querySelectorAll('#summary-context .context-date').length,0);
 });
 
-test('six independent accessible controls keep all other cards open and survive refresh',()=>{
+test('four independent accessible controls keep all other cards open and survive refresh',()=>{
   const document=new JSDOM('<main></main>').window.document;
   const root=document.querySelector('main'), expanded=new Set();
   renderAnalysis(root,fixture,expanded);
   const buttons=[...root.querySelectorAll('[data-toggle]')];
-  assert.equal(buttons.length,6);
+  assert.equal(buttons.length,4);
   for(const button of buttons) {
     assert.equal(button.tagName,'BUTTON');
     assert.equal(button.getAttribute('aria-expanded'),'false');
@@ -153,12 +102,12 @@ test('six independent accessible controls keep all other cards open and survive 
     assert.equal(button.getAttribute('aria-expanded'),'true');
     assert.equal(document.getElementById(button.getAttribute('aria-controls')).hidden,false);
   }
-  assert.equal(expanded.size,6);
+  assert.equal(expanded.size,4);
   buttons[2].click();
-  assert.equal(expanded.size,5);
+  assert.equal(expanded.size,3);
   assert.equal(buttons[0].getAttribute('aria-expanded'),'true');
   renderAnalysis(root,fixture,expanded);
-  assert.equal(root.querySelectorAll('[data-toggle][aria-expanded="true"]').length,5);
+  assert.equal(root.querySelectorAll('[data-toggle][aria-expanded="true"]').length,3);
 });
 test('all displays use source states and a visible demo label, never a truth score',()=>{
   const document=new JSDOM('<main></main>').window.document;
@@ -186,10 +135,11 @@ test('source notice replaces score UI with linked cautions and preserves indepen
   assert.equal(card.querySelectorAll('.notice-list > li').length<=3,true);
   assert.doesNotMatch(card.textContent,/\d+점|\d+%|사진 자료의 날짜|교차검증|계산에서 제외/);
   assert.doesNotMatch(card.textContent,/거짓 또는 오류|확인된 사실|가짜 뉴스|허위/);
-  card.querySelector('[data-notice-details]').click();
-  assert.equal(root.querySelector('#details-cautions').hidden,false);
+  // '주의할 것' 카드가 없어졌으므로 그 카드로 이동하는 버튼도 없다
+  assert.equal(card.querySelector('[data-notice-details]'),null);
+  assert.equal(root.querySelector('[data-section="cautions"]'),null);
   assert.equal(root.querySelector('#details-claims').hidden,false);
-  assert.equal(root.querySelectorAll('[data-toggle]').length,6);
+  assert.equal(root.querySelectorAll('[data-toggle]').length,4);
 });
 test('untrusted article text and URL schemes cannot create executable markup',()=>{
   const document=new JSDOM('<main></main>').window.document;
@@ -213,7 +163,7 @@ test('related news is diversified by publisher and demo URLs are not clickable',
   assert.equal(document.querySelectorAll('#summary-related .related-row').length,fixture.related_articles.length);
   assert.equal(document.querySelectorAll('a').length,0);
 });
-test('report comparisons show scope and paired excerpts without changing the six-card controls',()=>{
+test('report comparisons show scope and paired excerpts without changing the four-card controls',()=>{
   const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
   const data=structuredClone(fixture),report=data.related_articles[0];
   report.comparison_points[0].related_quote='<script>alert("unsafe")</script>를 인용한 보도';
@@ -225,7 +175,7 @@ test('report comparisons show scope and paired excerpts without changing the six
   assert.match(card.textContent,/현재 기사/);assert.match(card.textContent,/비교 보도/);
   assert.match(card.textContent,/공통 보도는 사실 확인을 뜻하지/);
   assert.equal(card.querySelectorAll('script').length,0);
-  assert.equal(root.querySelectorAll('[data-toggle]').length,6);
+  assert.equal(root.querySelectorAll('[data-toggle]').length,4);
   card.querySelector('[data-toggle]').click();
   assert.equal(root.querySelector('[data-toggle="claims"]').getAttribute('aria-expanded'),'true');
   assert.equal(root.querySelector('#details-related').hidden,true);
@@ -255,7 +205,7 @@ test('summary uses up to two sentence bullets and metadata appears once beside i
   assert.equal(root.querySelector('.summary-list li').textContent,'지원 규모는 3.1조 원이다.');
   assert.equal(root.querySelectorAll('.overview-grid > [data-section="metadata"]').length,1);
   assert.equal(root.querySelectorAll('.analysis-grid [data-section="metadata"]').length,0);
-  assert.equal(root.querySelectorAll('[data-toggle]').length,6);
+  assert.equal(root.querySelectorAll('[data-toggle]').length,4);
   data.one_line_summary='지원 규모는 3.1조 원이다. 시행은 검토 중이다.';
   renderAnalysis(root,data);
   assert.equal(root.querySelectorAll('.summary-list li').length,2);
@@ -286,23 +236,21 @@ test('related article titles and publishers stay in compact rows and comparisons
   assert.ok(row.querySelector('.related-title').textContent.includes(fixture.related_articles[0].title));
   assert.equal(row.querySelector('.related-press').textContent,fixture.related_articles[0].publisher);
 });
-test('six cards display loading, errors and retry while preserving page metadata',()=>{
+test('four cards display loading, errors and retry while preserving page metadata',()=>{
   const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
   renderAnalysisState(root,fixture.article,'loading','분석 대기');
-  assert.equal(root.querySelectorAll('[data-toggle]').length,6);
-  assert.equal([...root.querySelectorAll('.section-state')].filter(e=>e.textContent.includes('분석 중')).length,5);
+  assert.equal(root.querySelectorAll('[data-toggle]').length,4);
+  assert.equal([...root.querySelectorAll('.section-state')].filter(e=>e.textContent.includes('분석 중')).length,3);
   renderAnalysisState(root,fixture.article,'error','서버 오류 <script>');
   assert.equal(root.querySelectorAll('[data-retry]').length,1);
-  assert.equal([...root.querySelectorAll('.section-state')].filter(e=>e.textContent.includes('처리 실패')).length,5);
+  assert.equal([...root.querySelectorAll('.section-state')].filter(e=>e.textContent.includes('처리 실패')).length,3);
   assert.equal(root.querySelector('script'),null);
   assert.ok(root.textContent.includes(fixture.article.publisher));
 });
-test('objective caution reasons retain source connections and unknown references are rejected',()=>{
+test('caution references are validated and unknown references are rejected',()=>{
   const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
   const a=structuredClone(fixture);
   a.caution.details=[{reason:'작성 기관의 이해관계 관련 문구 확인',source_ids:[a.sources[0].id],claim_ids:[a.claims[0].id]}];
-  renderAnalysis(root,a);root.querySelector('[data-toggle="cautions"]').click();
-  assert.ok(root.querySelector('#details-cautions').textContent.includes(a.sources[0].title));
   assert.equal(validateAnalysis(a),a);
   a.caution.details[0].source_ids=['invented'];assert.throws(()=>validateAnalysis(a),/참조/);
 });
@@ -347,13 +295,12 @@ test('foreign-language claims and evidence show a Korean AI translation beside t
   data.claims[0].translation='김정은은 비핵화를 내세워 제재를 약화하려 한다';
   data.evidence_mentions[0].translation='그는 2007년 김정일을 만났다';
   data.evidence_mentions[0].article_quote=data.evidence_mentions[0].description='He met Kim Jong-il in 2007.';
-  renderAnalysis(root,data,new Set(['claims','evidence']));
-  assert.match(root.querySelector('#summary-claims').textContent,/주장 1 · 김정은은 비핵화를/);
+  renderAnalysis(root,data,new Set(['claims']));
+  assert.match(root.querySelector('#summary-claims').textContent,/주장 1\s*김정은은 비핵화를/);
   const claims=root.querySelector('#details-claims').textContent;
   assert.ok(claims.includes(data.claims[0].original_text),'원문 인용 유지');
   assert.match(claims,/AI 번역\s*김정은은 비핵화를/);
-  assert.match(root.querySelector('#summary-evidence').textContent,/그는 2007년 김정일을 만났다/);
-  assert.match(root.querySelector('#details-evidence').textContent,/AI 번역\s*그는 2007년/);
+  assert.match(root.querySelector('#details-claims .evidence-list').textContent,/AI 번역\s*그는 2007년/);
   // 번역이 없는 한국어 기사는 기존 표시 그대로
   const plain=new JSDOM('<main></main>').window.document.querySelector('main');
   renderAnalysis(plain,fixture,new Set(['claims']));
@@ -368,21 +315,106 @@ test('evidence identical to a claim is not repeated and shows only its source',(
   data.evidence_mentions[0].article_quote=data.claims[0].original_text;
   data.evidence_mentions[0].source_label='가상정책연구소';
   data.evidence_mentions[0].translation='반복되면 안 되는 번역';
-  renderAnalysis(root,data,new Set(['evidence']));
-  const summary=root.querySelector('#summary-evidence').textContent, details=root.querySelector('#details-evidence').textContent;
-  assert.match(summary,/출처: 가상정책연구소/);
-  assert.match(summary,/주장 1과 같은 문장을 근거로 제시/);
-  assert.match(details,/주장 1과 같은 문장이에요/);
-  assert.doesNotMatch(summary+details,/반복되면 안 되는 번역/);
-  assert.ok(root.querySelector('#details-evidence [data-quote]'),'본문에서 보기 유지');
+  renderAnalysis(root,data,new Set(['claims']));
+  const item=root.querySelector('#details-claims .evidence-item');
+  assert.match(item.textContent,/출처: 가상정책연구소/);
+  assert.match(item.textContent,/주장 문장 안에 출처가 함께 적혀 있어요/);
+  assert.equal(item.querySelector('blockquote'),null,'주장 문장을 근거로 다시 인용하지 않음');
+  assert.doesNotMatch(root.querySelector('#details-claims').textContent,/반복되면 안 되는 번역/);
+  assert.ok(item.querySelector('[data-quote]'),'본문에서 보기 유지');
   // 출처 표기가 없으면 연결된 주장의 발언자를 쓴다
   data.evidence_mentions[0].source_label=null; data.claims[0].speaker='이성윤 교수';
-  renderAnalysis(root,data,new Set(['evidence']));
-  assert.match(root.querySelector('#summary-evidence').textContent,/출처: 이성윤 교수/);
+  renderAnalysis(root,data,new Set(['claims']));
+  assert.match(root.querySelector('#details-claims .evidence-item').textContent,/출처: 이성윤 교수/);
+});
+
+test('claims and their evidence share one card: collapsed shows claims only, expanded nests evidence under each claim',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),expanded=new Set();
+  renderAnalysis(root,fixture,expanded);
+  assert.equal(root.querySelector('[data-section="evidence"]'),null);
+  assert.equal(root.querySelector('[data-section="cautions"]'),null);
+  const card=root.querySelector('[data-section="claims"]');
+  assert.equal(card.querySelector('h2').textContent,'기사의 주장과 근거');
+  const button=card.querySelector('[data-toggle="claims"]');
+  assert.equal(button.textContent,'근거 보기 ›');
+  // 접힌 상태: 모든 주장이 번호와 함께 나오고 근거 내용은 나오지 않는다
+  assert.equal(card.querySelectorAll('#summary-claims .claim-list > li').length,fixture.claims.length);
+  assert.equal(card.querySelector('#summary-claims .evidence-item'),null);
+  button.click();
+  assert.equal(button.textContent,'접기 ∧');
+  const blocks=[...card.querySelectorAll('#details-claims .claim-details > .claim-block')];
+  assert.equal(blocks.length,fixture.claims.length);
+  fixture.claims.forEach((c,i)=>{
+    assert.match(blocks[i].textContent,new RegExp('주장 '+(i+1)));
+    const linked=fixture.evidence_mentions.filter(m=>m.claim_ids.includes(c.id));
+    assert.equal(blocks[i].querySelectorAll('.evidence-list > .evidence-item').length,linked.length);
+  });
+  button.click();
+  assert.equal(button.textContent,'근거 보기 ›');
+  assert.equal(card.querySelector('#details-claims').hidden,true);
 });
 
 test('event dates share one format without inventing missing year or month', () => {
   const cases = {'1950':'1950년','2007년':'2007년','9일(현지 시각)':'9일 (현지시간)','8일(현지시간)':'8일 (현지시간)','9일':'9일',
     '2018.03.09':'2018년 3월 9일','2018년 03월 09일':'2018년 3월 9일','March 12, 2018':'2018년 3월 12일','12 March 2018':'2018년 3월 12일','March 2018':'2018년 3월','지난 3월':'지난 3월','최근':'최근'};
   for (const [raw, want] of Object.entries(cases)) assert.equal(formatEventDate(raw), want, raw);
+});
+
+test('panel hides progress notes: no partial-state labels, no incomplete paragraph, no partial error list',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),a=structuredClone(fixture);
+  a.section_states={...(a.section_states||{}),claims:{status:'partial'},context:{status:'ready'},related:{status:'partial'}};
+  a.search_errors=['일부 검색 자료의 원문을 확보하지 못했습니다. 검색 요약과 구분합니다.'];
+  a.pipeline_errors=[{phase:'document_fetch',code:'provider_unavailable',provider:'tavily',message:'공급자 서비스가 일시적으로 응답하지 못했습니다. 잠시 후 다시 시도해 주세요.'}];
+  renderAnalysis(root,a);
+  assert.doesNotMatch(root.textContent,/정보 준비됨|일부 정보 미확인|일부 확인 미완료|공급자 서비스가 일시적으로/);
+  assert.equal(root.querySelector('.notice-incomplete'),null);
+  // 빈 카드 안내와 분석 중 표시는 유지
+  a.section_states.related={status:'empty',message:'관련 기사를 찾지 못했습니다.'};
+  renderAnalysis(root,a);
+  assert.match(root.querySelector('[data-section="related"] .section-state').textContent,/관련 기사를 찾지 못했습니다/);
+});
+
+test('original candidate in the notice is one linked line with the comparison button only',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),a=structuredClone(fixture);
+  a.claims.forEach(c=>c.source_status='source_not_found');a.search_status='completed';
+  Object.assign(a.related_articles[0],{original_candidate:true,publisher:'BBC',title:'Trump and North Korea talks: The political gamble of the 21st Century'});
+  renderAnalysis(root,a);
+  const li=root.querySelector('.notice-card .notice-candidate');
+  assert.match(li.textContent,/^원문 후보: BBC「Trump and North Korea talks: The political gamble…( \(시연용 링크\))?」/);
+  assert.equal(li.querySelectorAll('[data-report-review]').length,1);
+  assert.doesNotMatch(li.textContent,/비교 보도 원문|인용했는지/);
+});
+
+test('evidence shows the quote with a kind tag, and names the source only when the quote does not already contain it',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),data=structuredClone(fixture);
+  const m=data.evidence_mentions[0];
+  Object.assign(m,{article_quote:'영국 공영방송 BBC가 9일(현지 시각)',description:'영국 공영방송 BBC가 9일(현지 시각)',source_label:'영국 공영방송 BBC',source_kind:'news_report'});
+  data.sources.forEach(s=>s.mention_ids=s.mention_ids.filter(id=>id!==m.id));
+  renderAnalysis(root,data,new Set(['claims']));
+  const item=root.getElementById?.('evidence-mention-'+m.id) || document.getElementById('evidence-mention-'+m.id);
+  assert.match(item.querySelector('blockquote').textContent,/BBC가 9일\(현지 시각\)\s*언론 보도/);
+  assert.doesNotMatch(item.textContent,/출처: 영국 공영방송 BBC|자료 종류|원문 자료는 확보하지 못했습니다/);
+  m.source_label='브루스 클링너 연구원';
+  renderAnalysis(root,data,new Set(['claims']));
+  assert.match(document.getElementById('evidence-mention-'+m.id).textContent,/출처: 브루스 클링너 연구원/);
+});
+
+test('diff explanations put the question and the translation label on their own line',()=>{
+  const css=fs.readFileSync(new URL('../newscheck 4/sidepanel/sidepanel.css',import.meta.url),'utf8');
+  assert.match(css,/\.odiff-why b \{ display:block;/);
+  assert.match(css,/\.odiff-pair b, \.report-pair b \{ display:block; \}/);
+});
+
+test('original-diff card title is as large as the headline title and starts with the alert emoji',()=>{
+  const css=fs.readFileSync(new URL('../newscheck 4/sidepanel/sidepanel.css',import.meta.url),'utf8');
+  assert.match(css,/\.card h2\.odiff-title \{ font-size:16px;/);
+  assert.match(css,/\.headline-heading h2 \{ margin:0; font-size:16px; \}/);
+});
+test('original-diff card heading reads with the emoji and count',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),a=structuredClone(fixture);
+  Object.assign(a.related_articles[0],{original_candidate:true});
+  renderAnalysis(root,a);
+  const h=root.querySelector('.odiff h2.odiff-title');
+  assert.ok(h,'원문과 다른 점 카드가 있어야 함');
+  assert.match(h.textContent,/^🚨 원문과 다른 점 \d+건$/);
 });

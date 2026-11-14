@@ -1,4 +1,4 @@
-import { traceSummary, TRACE_NOTE, sourceNotice, NOTICE_NOTE, reportReviewPoints } from './summary.js';
+import { sourceNotice, NOTICE_NOTE, reportReviewPoints } from './summary.js';
 
 export const SOURCE_LABELS = { original_found: '원본 자료 확인', secondary_only: '재인용 자료만 확인', source_not_found: '원출처를 찾지 못함', unknown: '확인에 필요한 정보 부족' };
 export const CAUTION_LABELS = { caution: '주의사항 표시 필요', none_identified: '현재 별도 주의사항을 발견하지 못함', unknown: '출처 분석 정보 부족' };
@@ -80,71 +80,6 @@ function claimTags(a, ids) {
   const nums = (a.claims || []).flatMap((c, i) => (ids || []).includes(c.id) ? [i + 1] : []);
   return nums.length ? nums.map(n => '<span class="trace-badge claim-no">주장 ' + n + '의 근거</span>').join('') : '<span class="trace-badge">연결된 주장 없음</span>';
 }
-function cautionContent(a, detailed) {
-  const notice=sourceNotice(a);
-  const key = text => String(text).replace(/\s+/g,' ').trim().replace(/[.!。]+$/,'').trim();
-  const boilerplate = new Set([
-    '확보한 출처 정보에서 별도의 주의사항을 발견하지 못했습니다. 주장 진위의 판정은 아닙니다.',
-    '원본 자료 확인은 주장의 진실성을 입증하지 않습니다.',
-    '출처 확인은 주장의 진실성을 입증하지 않습니다.',
-    '주의사항의 존재나 부재는 주장 진위의 판정이 아닙니다.'
-  ].map(key));
-  const items = new Map(), missing = new Set(), missingSources = new Set(), missingClaims = new Set();
-  const errors = [...new Map((a.search_errors || []).map(text=>[key(text),text])).values()];
-  const errorKeys = new Set(errors.map(key));
-  const cited = citedSources(a), citedIds = new Set(cited.map(s => s.id));
-  for (const source of cited) {
-    if (!source.unknown_fields?.length) continue;
-    missingSources.add(source.id);
-    for (const field of source.unknown_fields) missing.add(FACT_LABELS[field] || field);
-  }
-  // Merge duplicate explanations without losing source/claim references or reasons lacking details.
-  const missingRows=[...(a.caution.details || []),...a.caution.reasons.map(reason=>({reason}))]
-    .filter(row=>row.reason.startsWith('출처 속성을 확인하지 못했습니다:'));
-  const noticeRows=(notice?.issues || []).map(item=>({...item,reason:item.text}));
-  for (const item of [...noticeRows,...missingRows]) {
-    const text = String(item.reason).replace(/\s+/g,' ').trim(), normalized = key(text);
-    if (!normalized) continue;
-    // 외부 검색 자료에만 해당하는 주의 문구는 표시하지 않음 (기사와 연결된 자료 기준)
-    if (item.source_ids?.length && !item.claim_ids?.length && !item.source_ids.some(id => citedIds.has(id))) continue;
-    if (text.startsWith('출처 속성을 확인하지 못했습니다:')) {
-      text.split(':').slice(1).join(':').split(',').map(s=>s.trim()).filter(Boolean).forEach(s=>missing.add(s));
-      (item.source_ids || []).forEach(id=>missingSources.add(id));
-      (item.claim_ids || []).forEach(id=>missingClaims.add(id));
-      continue;
-    }
-    // The status badge and error section already explain these boilerplate messages.
-    if (boilerplate.has(normalized)) continue;
-    if (errorKeys.has(normalized) || (errors.length && text === '원출처 검색 요청이 실패하여 분석이 불완전합니다.')) continue;
-    const row = items.get(normalized) || {text,source_ids:new Set(),claim_ids:new Set(),report_ids:new Set(),severity:item.severity};
-    (item.source_ids || []).forEach(id=>row.source_ids.add(id));
-    (item.claim_ids || []).forEach(id=>row.claim_ids.add(id));
-    (item.report_ids || []).forEach(id=>row.report_ids.add(id));
-    items.set(normalized,row);
-  }
-  const refs = (sourceIds,claimIds,reportIds=new Set()) => {
-    const labels = a.claims.flatMap((c,i)=>claimIds.has(c.id)?['주장 '+(i+1)]:[]).map(esc);
-    labels.push(...cited.filter(s=>sourceIds.has(s.id)).map(s=>safeLink(s.url,s.title,a.is_demo)));
-    labels.push(...(a.related_articles || []).filter(r=>reportIds.has(r.id)).map(r=>safeLink(r.url,'비교 보도 원문',a.is_demo)+' <button class="link-btn" data-report-review="'+esc(r.id)+'">두 기사 대조 보기</button>'));
-    return labels.length?'<p class="muted">관련: '+labels.join(' · ')+'</p>':'';
-  };
-  const rows = [...items.values()];
-  const missingText = missing.size?'확인하지 못한 출처 정보: '+[...missing].join(', '):'';
-  if (!detailed) return list([...rows.map(r=>r.text),...errors,...(missingText?[missingText]:[])].slice(0,3));
-  const sections = [];
-  if (rows.length) sections.push('<div class="caution-group"><h3>주의가 필요한 내용</h3><ul>'+rows.map(r=>'<li class="caution-item'+(r.severity==='review'?' review-text':'')+'">'+esc(r.text)+refs(r.source_ids,r.claim_ids,r.report_ids)+'</li>').join('')+'</ul></div>');
-  if (missing.size) sections.push('<div class="caution-group"><h3>확인하지 못한 출처 정보</h3><p>'+esc([...missing].join(', '))+'</p>'+refs(missingSources,missingClaims)+'</div>');
-  if (errors.length) sections.push('<div class="caution-group"><h3>분석 중 발생한 문제</h3>'+list(errors)+'</div>');
-  const pending=(notice?.incomplete || []).filter(reason=>!errorKeys.has(key(reason)));
-  if(pending.length)sections.push('<p class="notice-incomplete">확인 미완료: '+esc(pending.slice(0,2).join(' '))+'</p>');
-  return sections.join('');
-}
-function cautions(a, detailed) {
-  const level=sourceNotice(a)?.level;
-  const status=['caution','review'].includes(level)?'caution':level==='clear'?'none_identified':'unknown';
-  return pill(CAUTION_LABELS[status],status==='caution') + cautionContent(a,detailed) +
-    '<p class="trace-note">주의사항의 존재나 부재는 주장 진위의 판정이 아닙니다.</p>';
-}
 function reportComparison(report,detailed) {
   const points=report.comparison_points || [];
   const reviews=new Set(reportReviewPoints(report));
@@ -162,7 +97,7 @@ function reportComparison(report,detailed) {
   return '<div class="report-comparison">'+basis+points.map(point=>
     '<div class="comparison-point'+(reviews.has(point)?point.review_status==='paired_excerpt'?' report-review':' report-candidate':'')+'"><h3>'+esc(reviews.has(point)?point.review_status==='paired_excerpt'?'🔴 교차검증 필요':'🟡 원문 확인 필요':point.kind==='common'?'공통으로 다룬 내용':'표현·강조가 다른 부분')+' · '+esc(REPORT_ASPECTS[point.aspect])+'</h3>'+
     (reviews.has(point)?'<p>'+esc(point.review_kind==='citation_difference'?'인용 원문과 조건·표현에 차이가 있어 왜곡 여부를 확인해야 합니다.':'같은 사안에 대한 서술이 충돌할 가능성이 있어 두 보도의 맥락을 확인해야 합니다.')+'</p>'+(point.context_anchor?'<p class="trace-note">비교 기준: '+esc(point.context_anchor)+'</p>':'')+'<p class="trace-note">AI가 찾은 재확인 후보입니다. 어느 기사가 사실인지 판정한 결과가 아닙니다.</p>':'')+
-    '<div class="report-pair"><div><b>현재 기사</b><blockquote>'+esc(point.article_quote)+'</blockquote><button class="link-btn" data-quote="'+esc(point.article_quote)+'">본문에서 보기</button></div><div><b>'+(report.original_candidate?'원문 후보':'비교 보도')+'</b><blockquote>'+esc(point.related_quote)+'</blockquote>'+(point.related_quote_ko?'<p class="translation"><span class="trace-badge">AI 번역</span> '+esc(point.related_quote_ko)+'</p>':'')+'</div></div>'+(point.explanation?'<p class="odiff-why"><b>무엇이 달라졌나요?</b> '+esc(point.explanation)+'</p>':'')+'</div>'
+    '<div class="report-pair"><div><b>현재 기사</b><blockquote>'+esc(point.article_quote)+'</blockquote><button class="link-btn" data-quote="'+esc(point.article_quote)+'">본문에서 보기</button></div><div><b>'+(report.original_candidate?'원문 후보':'비교 보도')+'</b><blockquote>'+esc(point.related_quote)+'</blockquote>'+(point.related_quote_ko?'<b>AI 한국어 번역</b><blockquote>'+esc(point.related_quote_ko)+'</blockquote>':'')+'</div></div>'+(point.explanation?'<p class="odiff-why"><b>무엇이 달라졌나요?</b> '+esc(point.explanation)+'</p>':'')+'</div>'
   ).join('')+'</div>';
 }
 function summaryLines(value) {
@@ -224,7 +159,6 @@ export function sectionData(a) {
   const timeline = contextFlow(a);
   const event=a.event?.description?'<details class="event-original"><summary>핵심 사건 원문</summary><blockquote>'+esc(a.event.article_quote || a.event.description)+'</blockquote></details>':'';
   const timelineDetails = a.context_timeline.map(t=>'<div class="source-row"><p>'+esc((dateTag(a,t.date)?dateTag(a,t.date).text+' → ':'')+t.description)+'</p><button class="link-btn" data-quote="'+esc(t.article_quote)+'">본문에서 보기</button>'+(t.source_ids||[]).map(id=>a.sources.find(s=>s.id===id)).filter(Boolean).map(s=>'<p>'+safeLink(s.url,s.title,a.is_demo)+'</p>').join('')+'</div>').join('');
-  const claimSummary = list(a.claims.slice(0,2).map((c,i) => '주장 ' + (i+1) + ' · ' + translated(c, c.claim_text)));
   const cited = citedSources(a);
   const norm = t => String(t || '').replace(/\s+/g,' ').trim();
   // 근거로 뽑은 문장이 주장 원문과 겹치면 그 주장 번호를 돌려준다 (같은 문장을 두 번 보여주지 않기 위해)
@@ -235,25 +169,37 @@ export function sectionData(a) {
   };
   // 출처 이름: 근거의 출처 표기 → 없으면 연결된 주장의 발언자
   const sourceName = m => m.source_label || a.claims.filter(c => m.claim_ids.includes(c.id) && c.speaker).map(c => c.speaker)[0] || '';
-  const mentionRow = m => {
-    const claims = a.claims.filter(c => m.claim_ids.includes(c.id));
+  // 주장 아래에 들어가는 근거 한 개. 같은 근거가 여러 주장에 연결되면 이동용 id는 처음 한 번만 붙인다.
+  const placed = new Set();
+  const evidenceItem = m => {
     const sources = cited.filter(s => s.mention_ids.includes(m.id));
     const same = sameClaimNo(m), name = sourceName(m);
-    const head = same ? '<strong>' + esc(name ? '출처: ' + name : '출처를 밝히지 않은 문장') + '</strong><p class="muted">주장 ' + same + '과 같은 문장을 근거로 제시</p>'
-      : '<strong>' + esc(translated(m, m.description)) + '</strong><p>기사의 출처 표기: ' + esc(name || '명시되지 않음') + '</p>';
-    return '<div class="source-row">' + claimTags(a, m.claim_ids) + head + [...new Set(claims.map(c => SOURCE_LABELS[c.source_status]))].map(l => pill(l)).join('') + sources.slice(0,1).map(s => '<p>' + safeLink(s.url,s.title,a.is_demo) + '</p><p class="compact-summary">' + esc(s.summary) + '</p>').join('') + '</div>';
+    const anchor = placed.has(m.id) ? '' : ' id="evidence-mention-'+esc(m.id)+'"';
+    placed.add(m.id);
+    const kind = m.source_kind && m.source_kind !== 'unknown' ? ' <span class="ev-tag">' + esc(kindLabel(m.source_kind)) + '</span>' : '';
+    const named = name && norm(m.article_quote).includes(norm(name));
+    const body = same
+      ? '<p><strong>' + esc(name ? '출처: ' + name : '출처를 밝히지 않은 문장') + '</strong></p><p class="muted">주장 문장 안에 출처가 함께 적혀 있어요.</p>'
+      : '<blockquote>' + esc(m.article_quote) + kind + '</blockquote>' + translationLine(m) + (named ? '' : '<p>출처: ' + esc(name || '명시되지 않음') + '</p>');
+    return '<li class="evidence-item"'+anchor+'>' + body + '<button class="link-btn" data-quote="' + esc(m.article_quote) + '">본문에서 보기</button>' +
+      sources.map(s => '<div id="evidence-source-'+esc(s.id)+'">'+sourceDetails(s,a.is_demo)+'</div>').join('') + '</li>';
   };
-  const mentionDetail = m => {
-    const sources = cited.filter(s => s.mention_ids.includes(m.id));
-    const same = sameClaimNo(m), name = sourceName(m);
-    const quote = same ? '<p>기사에서 제시한 근거: 주장 ' + same + '과 같은 문장이에요. 원문과 번역은 기사의 주장 카드에서 볼 수 있어요.</p>'
-      : '<p>기사에서 제시한 근거: ' + esc(m.article_quote) + '</p>' + translationLine(m);
-    return '<div class="source-row" id="evidence-mention-'+esc(m.id)+'">' + claimTags(a, m.claim_ids) + quote + '<p>기사의 출처 표기: ' + esc(name || '명시되지 않음') + ' · 자료 종류: ' + esc(kindLabel(m.source_kind)) + '</p><button class="link-btn" data-quote="' + esc(m.article_quote) + '">본문에서 보기</button>' +
-      (sources.length ? sources.map(s => '<div id="evidence-source-'+esc(s.id)+'">'+sourceDetails(s,a.is_demo)+'</div>').join('') : '<p class="muted">이 근거의 원문 자료는 확보하지 못했습니다.</p>') + '</div>';
-  };
+  const claimEvidence = c => a.evidence_mentions.filter(m => m.claim_ids.includes(c.id));
+  // 접힌 상태: 주장만 번호로 나열하고 근거 개수만 표시
+  const claimSummary = a.claims.length ? '<ol class="claim-list">' + a.claims.map((c,i) => {
+    const n = claimEvidence(c).length;
+    return '<li><span class="trace-badge claim-no">주장 ' + (i+1) + '</span>' + esc(translated(c, c.claim_text)) + (n ? ' <span class="evidence-count">근거 ' + n + '</span>' : '') + '</li>';
+  }).join('') + '</ol>' : '<p class="muted">원문과 연결된 주장을 추출하지 못했습니다.</p>';
+  // 펼친 상태: 주장 1 → 근거들, 주장 2 → 근거들
+  const claimDetails = a.claims.map((c,i) => {
+    const items = claimEvidence(c);
+    return '<li class="claim-block"><div class="claim-head"><span class="trace-badge claim-no">주장 ' + (i+1) + '</span>' + pill(TYPE_LABELS[c.claim_type]) + pill(SOURCE_LABELS[c.source_status]) + '</div>' +
+      '<blockquote>' + esc(c.original_text) + '</blockquote>' + translationLine(c) + '<p>발언자: ' + esc(c.speaker || '미확인') + '</p><button class="link-btn" data-quote="' + esc(c.original_text) + '">본문에서 보기</button>' +
+      '<h3 class="evidence-heading">근거</h3>' + (items.length ? '<ol class="evidence-list">' + items.map(evidenceItem).join('') + '</ol>' : '<p class="muted">기사에 이 주장의 근거가 따로 제시되지 않았어요.</p>') + '</li>';
+  }).join('');
+  const looseMentions = a.evidence_mentions.filter(m => !a.claims.some(c => m.claim_ids.includes(c.id)));
   const linked = new Set(a.evidence_mentions.flatMap(m => cited.filter(s => s.mention_ids.includes(m.id)).map(s => s.id)));
   const otherCited = cited.filter(s => !linked.has(s.id));
-  const mentions = a.evidence_mentions.slice(0,2).map(mentionRow).join('');
   // Prefer articles from different publishers. Unknown publisher uses hostname.
   const seen = new Set();
   const related = a.related_articles.filter(r => { let key; try { key = r.publisher || new URL(r.url).hostname; } catch { return false; } if (seen.has(key)) return false; seen.add(key); return true; });
@@ -261,33 +207,55 @@ export function sectionData(a) {
   return [
     {id:'context',title:'배경 및 맥락',summary:timeline,details:timeline+event+timelineDetails + '<p class="trace-note">기사에서 확인한 흐름이며 화살표가 인과관계를 입증하는 것은 아닙니다.</p>'},
     {id:'metadata',title:'기사 기본 정보',summary:compactMetadata,details:metadata + '<dl><dt>수정일</dt><dd>' + esc(article.updated_at?compactDate(article.updated_at):'미확인') + '</dd><dt>원문</dt><dd>' + safeLink(article.url,'기사 원문',a.is_demo) + '</dd><dt>기자 정보</dt><dd>' + (article.author_profile_url ? safeLink(article.author_profile_url,'공개 프로필',a.is_demo) : '확인 가능한 공개 프로필 없음') + '</dd></dl>'},
-    {id:'claims',title:'기사의 주장',summary:claimSummary,details:a.claims.map((c,i) => '<div class="source-row"><span class="trace-badge claim-no">주장 ' + (i+1) + '</span>' + pill(TYPE_LABELS[c.claim_type]) + '<blockquote>' + esc(c.original_text) + '</blockquote>' + translationLine(c) + '<p>발언자: ' + esc(c.speaker || '미확인') + '</p><button class="link-btn" data-quote="' + esc(c.original_text) + '">본문에서 보기</button></div>').join('') || '<p>추출된 주장 없음</p>'},
-    {id:'evidence',title:'내용의 근거',summary:(mentions || '<p class="muted">기사가 직접 제시한 근거가 없습니다.</p>') + (a.evidence_mentions.length && !cited.length ? '<p>기사가 제시한 근거의 원문 자료를 아직 확보하지 못했습니다.</p>' : ''),details:(a.evidence_mentions.map(mentionDetail).join('') || '<p class="muted">기사가 직접 제시한 근거가 없습니다.</p>') + (otherCited.length ? '<h3>기사에 언급된 기타 자료</h3>' + otherCited.map(s => '<div id="evidence-source-'+esc(s.id)+'">'+sourceDetails(s,a.is_demo)+'</div>').join('') : '') + '<p class="trace-note">기사 안에서 제시된 근거만 보여줍니다. 외부 검색으로 찾은 자료는 근거로 표시하지 않습니다.</p>'},
-    {id:'cautions',title:'주의할 것',summary:cautions(a,false),details:cautions(a,true)},
+    {id:'claims',title:'기사의 주장과 근거',more:'근거 보기',summary:claimSummary,details:(a.claims.length ? '<ol class="claim-details">' + claimDetails + '</ol>' : '<p class="muted">원문과 연결된 주장을 추출하지 못했습니다.</p>') +
+      (looseMentions.length ? '<h3>주장과 연결되지 않은 근거</h3><ol class="evidence-list">' + looseMentions.map(evidenceItem).join('') + '</ol>' : '') +
+      (otherCited.length ? '<h3>기사에 언급된 기타 자료</h3>' + otherCited.map(s => '<div id="evidence-source-'+esc(s.id)+'">'+sourceDetails(s,a.is_demo)+'</div>').join('') : '') +
+      '<p class="trace-note">기사 안에서 제시된 근거만 보여줍니다. 외부 검색으로 찾은 자료는 근거로 표시하지 않습니다.</p>'},
     {id:'related',title:'비슷한 주제의 기사',summary:relatedList(related.slice(0,5),a.is_demo),details:relatedList(related,a.is_demo,true)}
   ];
 }
+const moreLabel = s => (s.more || '자세히 보기') + ' ›';
+// 주장 카드는 서버의 claims·evidence 상태 중 더 나쁜 쪽을 보여준다
+const STATE_RANK = {error:4,partial:3,loading:2,empty:1,ready:0};
+function sectionState(a,id) {
+  const states=a.section_states || {};
+  if(id!=='claims') return states[id];
+  return [states.claims,states.evidence].filter(Boolean).sort((x,y)=>(STATE_RANK[y.status]??0)-(STATE_RANK[x.status]??0))[0];
+}
 function sectionMarkup(a,s,expanded) {
-  const state=a.section_states?.[s.id];
-  const status=state&&s.id!=='metadata'?'<p class="section-state" role="status">'+esc(({ready:'정보 준비됨',empty:'확인된 정보 없음',partial:'일부 정보 미확인',error:'처리 실패',loading:'분석 중'})[state.status] || '상태 미확인')+(state.message?' · '+esc(state.message):'')+'</p>':'';
-  return '<section class="card analysis-section'+(s.id==='metadata'?' compact-metadata':'')+'" data-section="'+s.id+'"><div class="section-heading"><h2>'+s.title+'</h2><button type="button" data-toggle="'+s.id+'" aria-label="'+s.title+' '+(expanded.has(s.id)?'접기':'자세히 보기')+'" aria-expanded="'+expanded.has(s.id)+'" aria-controls="details-'+s.id+'">'+(expanded.has(s.id)?'접기 ∧':'자세히 보기 ›')+'</button></div>'+status+'<div id="summary-'+s.id+'"'+(expanded.has(s.id)?' hidden':'')+'>'+s.summary+'</div><div id="details-'+s.id+'"'+(!expanded.has(s.id)?' hidden':'')+'>'+s.details+'</div></section>';
+  const state=sectionState(a,s.id);
+  // 준비됨·일부 미확인 같은 진행 상태는 표시하지 않고, 분석 중·처리 실패와 빈 카드 안내만 보여 준다
+  const label=state&&s.id!=='metadata'?({error:'처리 실패',loading:'분석 중'})[state.status]:'';
+  const text=label?label+(state.message?' · '+state.message:''):state?.status==='empty'&&s.id!=='metadata'?state.message:'';
+  const status=text?'<p class="section-state" role="status">'+esc(text)+'</p>':'';
+  return '<section class="card analysis-section'+(s.id==='metadata'?' compact-metadata':'')+'" data-section="'+s.id+'"><div class="section-heading"><h2>'+s.title+'</h2><button type="button" data-toggle="'+s.id+'" aria-label="'+s.title+' '+(expanded.has(s.id)?'접기':(s.more || '자세히 보기'))+'" aria-expanded="'+expanded.has(s.id)+'" aria-controls="details-'+s.id+'">'+(expanded.has(s.id)?'접기 ∧':moreLabel(s))+'</button></div>'+status+'<div id="summary-'+s.id+'"'+(expanded.has(s.id)?' hidden':'')+'>'+s.summary+'</div><div id="details-'+s.id+'"'+(!expanded.has(s.id)?' hidden':'')+'>'+s.details+'</div></section>';
 }
 
 function noticeStrip(a) {
   const notice=sourceNotice(a);
   if(!notice) return '';
-  const rows=notice.issues.slice(0,3).map(item=>{
+  // 긴 제목은 단어 중간이 아니라 단어 경계에서 자른다
+  const short=t=>{t=String(t || '');if(t.length<=50)return t;let cut=t.slice(0,50);if(!/\s/.test(t[50]))cut=cut.replace(/\s+\S*$/,'');return cut.trimEnd()+'…';};
+  const row=item=>{
+    // 원문 후보: 'BBC「제목…」↗' 한 줄 + 대조 버튼만 (같은 링크를 두 번 보여 주지 않음)
+    const cand=item.candidate_id && a.related_articles.find(r=>r.id===item.candidate_id);
+    if(cand){
+      const claims=item.claim_ids.map(id=>'주장 '+(a.claims.findIndex(c=>c.id===id)+1)).map(esc);
+      const refs=[...claims,'<button class="link-btn" data-report-review="'+esc(cand.id)+'">두 기사 대조 보기</button>'];
+      return '<li class="notice-candidate">원문 후보: '+(cand.publisher?esc(cand.publisher):'')+'「'+safeLink(cand.url,short(cand.title),a.is_demo)+'」<p class="muted">관련: '+refs.join(' · ')+'</p></li>';
+    }
     const claims=item.claim_ids.map(id=>'주장 '+(a.claims.findIndex(c=>c.id===id)+1));
     const sources=item.source_ids.map(id=>a.sources.find(s=>s.id===id)).filter(Boolean);
     const refs=[...claims.map(esc),...sources.map(s=>safeLink(s.url,s.title,a.is_demo))];
     refs.push(...(item.report_ids || []).map(id=>a.related_articles.find(r=>r.id===id)).filter(Boolean).map(r=>safeLink(r.url,'비교 보도 원문',a.is_demo)+' <button class="link-btn" data-report-review="'+esc(r.id)+'">두 기사 대조 보기</button>'));
     return '<li'+(item.severity==='review'?' class="review-text"':'')+'>'+esc(item.text)+(refs.length?'<p class="muted">관련: '+refs.join(' · ')+'</p>':'')+'</li>';
-  }).join('');
+  };
+  const rows=notice.issues.slice(0,3).map(row).join('');
+  const extra=notice.issues.slice(3);
   return '<section class="card notice-card notice-'+notice.level+'" aria-label="출처 확인·주의 상태">'+
     '<h2>출처 확인·주의 상태</h2><p class="notice-level">'+notice.icon+' '+esc(notice.text)+'</p>'+
     (rows?'<ul class="notice-list">'+rows+'</ul>':'')+
-    (notice.incomplete.length?'<p class="notice-incomplete">'+(notice.issues.length?'일부 확인 미완료: ':'')+esc(notice.incomplete.slice(0,2).join(' '))+'</p>':'')+
-    (notice.issues.length?'<button class="link-btn" data-notice-details>주의사항 자세히 보기'+(notice.issues.length>3?' · 추가 항목 있음':'')+'</button>':'')+
+    (extra.length?'<details class="notice-more"><summary>나머지 '+extra.length+'개 더 보기</summary><ul class="notice-list">'+extra.map(row).join('')+'</ul></details>':'')+
     '<p class="trace-note">'+esc(NOTICE_NOTE)+'</p></section>';
 }
 
@@ -304,39 +272,27 @@ function diffCard(a) {
   const groups = originalDiffs(a);
   if (!groups.length) return '';
   const total = groups.reduce((n, g) => n + g.points.length, 0);
-  return '<section class="card odiff" aria-label="원문과 다른 점"><h2>원문과 다른 점 ' + total + '건</h2>' + groups.map(g =>
+  return '<section class="card odiff" aria-label="원문과 다른 점"><h2 class="odiff-title"><span aria-hidden="true">🚨</span> 원문과 다른 점 ' + total + '건</h2>' + groups.map(g =>
     '<p class="trace-headline">'+(g.report.original_candidate?'원문 후보 · 인용 관계 미확인: ':'기사 인용 원본 확인 자료: ') + safeLink(g.report.url, g.report.title, a.is_demo) + '</p>' +
     g.points.map(p => '<div class="odiff-point'+(reportReviewPoints(g.report).includes(p)&&p.review_status==='paired_excerpt'?' report-review':'')+'"><h3>'+(reportReviewPoints(g.report).includes(p)&&p.review_status==='paired_excerpt'?'🔴 교차검증 필요 · ':'') + esc(REPORT_ASPECTS[p.aspect] || '표현') + '</h3><div class="odiff-pair"><div><b>현재 기사</b><blockquote>' + esc(p.article_quote) + '</blockquote></div><div><b>'+(g.report.original_candidate?'원문 후보':'원문')+'</b><blockquote>' + esc(p.related_quote) + '</blockquote>' + (p.related_quote_ko ? '<b>AI 한국어 번역</b><blockquote>' + esc(p.related_quote_ko) + '</blockquote>' : '') + '</div></div>' + (p.explanation ? '<p class="odiff-why"><b>무엇이 달라졌나요?</b> ' + esc(p.explanation) + '</p>' : '') + '</div>').join('') + '<button class="link-btn" data-report-review="'+esc(g.report.id)+'">관련 기사 상세에서 대조 보기</button>'
   ).join('') + '<p class="trace-note">AI가 두 본문의 구절을 짝지어 찾은 차이예요. 어느 쪽이 맞는지는 판단하지 않으니 직접 확인해 주세요.</p></section>';
 }
 
-function traceStrip(a) {
-  const t = traceSummary(a);
-  if (!t) return '';
-  const cells = t.cells.map(c => '<span class="trace-cell trace-' + c.key + '" title="' + esc(c.label) + '"></span>').join('');
-  const legend = t.legend.map(l => '<li><i class="trace-dot trace-' + l.key + '" aria-hidden="true"></i>' + esc(l.label) + ' ' + l.count + '</li>').join('');
-  const aria = t.legend.map(l => l.label + ' ' + l.count).join(', ');
-  return '<section class="card trace-strip" id="trace-overview" tabindex="-1" aria-label="근거 확인 현황"><div class="trace-top"><span class="trace-kicker">근거 확인 현황</span>' +
-    (t.caution ? '<span class="trace-badge caution">주의할 점 ' + (t.cautionCount ? t.cautionCount + '건' : '있음') + '</span>' : '') +
-    (t.partial ? '<span class="trace-badge">일부 단계 미완료</span>' : '') + '</div>' +
-    '<p class="trace-headline">' + esc(t.headline) + '</p>' +
-    (t.total ? '<div class="trace-cells" role="img" aria-label="' + esc(aria) + '">' + cells + '</div><ul class="trace-legend">' + legend + '</ul>' : '') +
-    '<p class="trace-note">' + esc(TRACE_NOTE) + '</p></section>';
-}
 
 export function renderAnalysis(container, a, expanded = new Set()) {
   const sections=sectionData(a);
   const summary=a.ui_state?'<p>'+esc(a.one_line_summary)+'</p>':'<ul class="summary-list">'+summaryLines(a.one_line_summary).map(line=>'<li>'+esc(line)+'</li>').join('')+'</ul>';
-  container.innerHTML = headlineCard(a,expanded) + (a.is_demo ? '<div class="demo-banner" role="status">시연용 예시 · 실제 기사나 실제 출처 분석 결과가 아닙니다.</div>' : '') + noticeStrip(a) + diffCard(a) + traceStrip(a) +
-    '<div class="overview-grid"><div class="analysis-summary"><span>'+(a.ui_state==='loading'?'분석 중':a.ui_state==='error'?'분석 요청 실패':a.analysis_status==='partial'?'부분 분석':'출처 분석 완료')+'</span><h2>한 줄 요약</h2>'+summary+'</div>'+sectionMarkup(a,sections.find(s=>s.id==='metadata'),expanded)+'</div>'+errorList(a.pipeline_errors)+
+  container.innerHTML = headlineCard(a,expanded) + (a.is_demo ? '<div class="demo-banner" role="status">시연용 예시 · 실제 기사나 실제 출처 분석 결과가 아닙니다.</div>' : '') + noticeStrip(a) + diffCard(a) +
+    '<div class="overview-grid"><div class="analysis-summary"><span>'+(a.ui_state==='loading'?'분석 중':a.ui_state==='error'?'분석 요청 실패':a.analysis_status==='partial'?'부분 분석':'출처 분석 완료')+'</span><h2>한 줄 요약</h2>'+summary+'</div>'+sectionMarkup(a,sections.find(s=>s.id==='metadata'),expanded)+'</div>'+
     '<div class="analysis-grid">'+sections.filter(s=>s.id!=='metadata').map(s=>sectionMarkup(a,s,expanded)).join('')+'</div>'+
     '<div class="card"><h2>제목과 본문 표현의 차이</h2><p>' + esc(a.headline_difference) + '</p><p class="trace-note">' + esc(a.final_comment) + '</p><p class="muted">분석 시각: ' + esc(a.analyzed_at) + '</p></div>';
   const setSectionOpen = (id,open) => {
     const button=container.querySelector('[data-toggle="'+id+'"]');
     if(open)expanded.add(id);else expanded.delete(id);
     button.setAttribute('aria-expanded', String(expanded.has(id)));
-    button.textContent = expanded.has(id) ? '접기 ∧' : '자세히 보기 ›';
-    button.setAttribute('aria-label',sections.find(s=>s.id===id).title+' '+(expanded.has(id)?'접기':'자세히 보기'));
+    const section=sections.find(s=>s.id===id);
+    button.textContent = expanded.has(id) ? '접기 ∧' : moreLabel(section);
+    button.setAttribute('aria-label',section.title+' '+(expanded.has(id)?'접기':(section.more || '자세히 보기')));
     container.querySelector('#details-' + id).hidden = !expanded.has(id);
     container.querySelector('#summary-' + id).hidden = expanded.has(id);
   };
@@ -348,13 +304,6 @@ export function renderAnalysis(container, a, expanded = new Set()) {
       setSectionOpen('related',true);
       const target=container.ownerDocument.getElementById('related-report-'+id);
       if(target){target.open=true;target.setAttribute('tabindex','-1');target.focus({preventScroll:true});target.scrollIntoView?.({behavior:'smooth',block:'start'});}
-      return;
-    }
-    if(e.target.closest('[data-notice-details]')) {
-      setSectionOpen('cautions',true);
-      const target=container.querySelector('[data-section="cautions"]');
-      target.setAttribute('tabindex','-1');target.focus({preventScroll:true});
-      target.scrollIntoView?.({behavior:'smooth',block:'start'});
       return;
     }
     const toggle=e.target.closest('[data-headline-toggle]');
@@ -372,9 +321,10 @@ export function renderAnalysis(container, a, expanded = new Set()) {
       if(!reason)return;
       const mid=reason.mention_ids.find(id=>a.evidence_mentions.some(m=>m.id===id));
       const sid=reason.source_ids.find(id=>citedSources(a).some(s=>s.id===id));
-      let target=container.querySelector('#trace-overview');
+      // 연결된 근거가 없으면 '기사의 주장과 근거' 카드로 이동한다
+      let target=container.querySelector('[data-section="claims"]');
       if(mid || sid){
-        setSectionOpen('evidence',true);
+        setSectionOpen('claims',true);
         target=container.ownerDocument.getElementById(mid?'evidence-mention-'+mid:'evidence-source-'+sid);
       }
       if(target){
