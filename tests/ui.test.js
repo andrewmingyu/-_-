@@ -10,7 +10,7 @@ test('headline meaning and reasons have separate headings and reasons retain mea
   const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
   renderAnalysis(root,fixture);
   assert.equal(root.querySelector('#headline-explanation-title').textContent,'제목의 의미');
-  assert.equal(root.querySelector('.headline-reasons-title').textContent,'이유');
+  assert.equal(root.querySelector('.headline-reasons-title').textContent,'제목을 뒷받침하는 내용');
   assert.equal(reasonPhrase('이란 측은 청해부대 임무 확대가 미국의 대이란 침략 가담 행위라고 주장했다.'),'이란 측은 청해부대 임무 확대가 미국의 대이란 침략 가담 행위라고 주장');
   assert.equal(reasonPhrase('기관은 추가 조치 가능성을 경고했습니다.'),'기관은 추가 조치 가능성을 경고');
   assert.equal(reasonPhrase('정책 시행은 확정되지 않았다.'),'정책 시행은 확정되지 않음');
@@ -33,8 +33,8 @@ test('headline meaning is first, reasons are plain bullets and evidence jumps pr
   renderAnalysis(root,fixture,expanded);
   assert.equal(root.firstElementChild.classList.contains('headline-explanation'),true);
   assert.equal(root.querySelector('.headline-meaning').textContent,fixture.headline_explanation.meaning);
-  assert.equal(root.querySelectorAll('.headline-reasons > li').length,fixture.headline_explanation.reasons.length);
-  assert.equal(root.querySelectorAll('.headline-reasons a').length,0);
+  assert.equal(root.querySelectorAll('#headline-summary > li').length,fixture.headline_explanation.reasons.length);
+  assert.equal(root.querySelectorAll('#headline-summary a').length,0);
   const toggle=root.querySelector('[data-headline-toggle]');toggle.click();
   assert.equal(root.querySelector('#headline-details').hidden,false);
   root.querySelector('[data-headline-jump="0"]').click();
@@ -321,7 +321,8 @@ test('evidence identical to a claim is not repeated and shows only its source',(
   assert.match(item.textContent,/주장 문장 안에 출처가 함께 적혀 있어요/);
   assert.equal(item.querySelector('blockquote'),null,'주장 문장을 근거로 다시 인용하지 않음');
   assert.doesNotMatch(root.querySelector('#details-claims').textContent,/반복되면 안 되는 번역/);
-  assert.ok(item.querySelector('[data-quote]'),'본문에서 보기 유지');
+  assert.equal(item.querySelector('[data-quote]'),null,'주장과 같은 문장이므로 근거에는 본문에서 보기를 다시 넣지 않음');
+  assert.ok(item.closest('.claim-block').querySelector(':scope > [data-quote]'),'주장 쪽 본문에서 보기는 유지');
   // 출처 표기가 없으면 연결된 주장의 발언자를 쓴다
   data.evidence_mentions[0].source_label=null; data.claims[0].speaker='이성윤 교수';
   renderAnalysis(root,data,new Set(['claims']));
@@ -417,4 +418,38 @@ test('original-diff card heading reads with the emoji and count',()=>{
   const h=root.querySelector('.odiff h2.odiff-title');
   assert.ok(h,'원문과 다른 점 카드가 있어야 함');
   assert.match(h.textContent,/^🚨 원문과 다른 점 \d+건$/);
+});
+
+test('headline support: collapsed shows short points only, expanded shows the same numbers with the indented article quote once',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main');
+  renderAnalysis(root,fixture);
+  const n=fixture.headline_explanation.reasons.length;
+  assert.equal(root.querySelector('#headline-summary').hidden,false);
+  assert.equal(root.querySelector('#headline-details').hidden,true);
+  root.querySelector('[data-headline-toggle]').click();
+  assert.equal(root.querySelector('#headline-summary').hidden,true,'펼치면 요약 목록은 숨겨 같은 내용을 두 번 보여 주지 않음');
+  const items=root.querySelectorAll('#headline-details > li');
+  assert.equal(items.length,n);
+  assert.equal(items[0].querySelector('.headline-quote blockquote').textContent,fixture.headline_explanation.reasons[0].article_quote);
+  assert.match(items[0].textContent,/주장과 근거에서 보기 →/);
+  assert.doesNotMatch(root.querySelector('.headline-explanation').textContent,/근거 확인 현황|이유 1/);
+  root.querySelector('[data-headline-toggle]').click();
+  assert.equal(root.querySelector('#headline-summary').hidden,false);
+});
+
+test('a claim without separate evidence uses its speaker as the source only when the name is in the claim sentence',()=>{
+  const document=new JSDOM('<main></main>').window.document,root=document.querySelector('main'),data=structuredClone(fixture);
+  const c=data.claims[0];
+  Object.assign(c,{original_text:'광명경찰서는 14일 도주치사 혐의로 50대 여성 A씨를 긴급체포해 조사하고 있다고 밝혔다.',speaker:'광명경찰서'});
+  data.evidence_mentions=data.evidence_mentions.filter(m=>!m.claim_ids.includes(c.id));
+  renderAnalysis(root,data,new Set(['claims']));
+  let block=root.querySelectorAll('#details-claims .claim-block')[0];
+  assert.match(block.querySelector('.evidence-list').textContent,/출처: 광명경찰서\s*주장 문장 안에 출처가 함께 적혀 있어요/);
+  assert.doesNotMatch(block.textContent,/발언자: 광명경찰서|근거가 따로 제시되지 않았어요/);
+  // AI가 짐작한 발언자(문장에 없는 이름)는 근거로 쓰지 않는다
+  c.speaker='경기남부경찰청';
+  renderAnalysis(root,data,new Set(['claims']));
+  block=root.querySelectorAll('#details-claims .claim-block')[0];
+  assert.match(block.textContent,/근거가 따로 제시되지 않았어요/);
+  assert.match(block.textContent,/발언자: 경기남부경찰청/);
 });

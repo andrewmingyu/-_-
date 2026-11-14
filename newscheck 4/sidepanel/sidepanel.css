@@ -273,6 +273,10 @@ main { padding-top: 10px; }
 .headline-heading .btn { font-size:12px; padding:6px 9px; }
 .headline-meaning { font-size:15px; font-weight:700; line-height:1.7; margin:12px 0 8px; }
 .headline-reasons { padding-left:20px; margin:8px 0 0; font-size:13px; }
+.headline-reasons > li::marker { color:var(--accent-text); font-weight:700; }
+.headline-reasons-detail > li { margin:0 0 12px; }
+.headline-quote { margin-top:6px; }
+.headline-quote blockquote { margin:2px 0 6px; }
 .headline-reasons-title { margin:12px 0 0; font-size:13px; color:var(--accent-text); }
 .headline-reasons li { margin:7px 0; line-height:1.65; }
 .headline-reason-detail { border-top:1px solid var(--line); margin-top:12px; padding-top:10px; font-size:13px; }

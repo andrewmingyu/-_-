@@ -143,9 +143,12 @@ function headlineCard(a,expanded) {
   const message=a.ui_state==='loading'?'기사 본문에서 제목의 의미와 이유를 읽는 중입니다.':a.ui_state==='error'?'제목 설명을 불러오지 못했습니다. 다시 분석해 주세요.':'제목 설명이 아직 없습니다. 다시 분석해 주세요.';
   const open=expanded.has('headline');
   return '<section class="card headline-explanation" aria-labelledby="headline-explanation-title"><div class="headline-heading"><h2 id="headline-explanation-title">제목의 의미</h2>'+(a.is_demo?'<span class="trace-badge">시연용</span>':'')+
-    (available?'<button class="btn" data-headline-toggle aria-label="제목의 의미와 이유 '+(open?'접기':'자세히 보기')+'" aria-expanded="'+open+'" aria-controls="headline-details">'+(open?'접기 ∧':'자세히 보기 ›')+'</button>':'')+'</div>'+
-    (available?'<p class="headline-meaning">'+esc(h.meaning)+'</p><h3 class="headline-reasons-title">이유</h3><ul class="headline-reasons">'+reasons.map(r=>'<li>'+esc(reasonPhrase(r.text))+'</li>').join('')+'</ul>'+
-    '<div id="headline-details"'+(open?'':' hidden')+'>'+reasons.map((r,i)=>'<div class="headline-reason-detail"><h3>이유 '+(i+1)+'</h3><p>'+esc(reasonPhrase(r.text))+'</p><blockquote>'+esc(r.article_quote)+'</blockquote><button class="link-btn" data-headline-jump="'+i+'">'+(r.mention_ids.some(id=>a.evidence_mentions.some(m=>m.id===id)) || r.source_ids.some(id=>citedSources(a).some(s=>s.id===id))?'이 이유의 근거 보기 →':'근거 확인 현황 보기 →')+'</button></div>').join('')+'</div>':'<p class="muted">'+esc(message)+'</p>')+'</section>';
+    (available?'<button class="btn" data-headline-toggle aria-label="제목의 의미와 뒷받침하는 내용 '+(open?'접기':'자세히 보기')+'" aria-expanded="'+open+'" aria-controls="headline-details">'+(open?'접기 ∧':'자세히 보기 ›')+'</button>':'')+'</div>'+
+    // 접힌 상태: 짧게 정리한 내용만 / 펼친 상태: 같은 번호 아래에 기사 원문을 들여쓰기로 붙인다 (주장과 근거 카드와 같은 형식)
+    (available?'<p class="headline-meaning">'+esc(h.meaning)+'</p><h3 class="headline-reasons-title">제목을 뒷받침하는 내용</h3>'+
+    '<ol class="headline-reasons" id="headline-summary"'+(open?' hidden':'')+'>'+reasons.map(r=>'<li>'+esc(reasonPhrase(r.text))+'</li>').join('')+'</ol>'+
+    '<ol class="headline-reasons headline-reasons-detail" id="headline-details"'+(open?'':' hidden')+'>'+reasons.map((r,i)=>'<li>'+esc(reasonPhrase(r.text))+
+      '<div class="evidence-list headline-quote"><blockquote>'+esc(r.article_quote)+'</blockquote><button class="link-btn" data-quote="'+esc(r.article_quote)+'">본문에서 보기</button> · <button class="link-btn" data-headline-jump="'+i+'">주장과 근거에서 보기 →</button></div></li>').join('')+'</ol>':'<p class="muted">'+esc(message)+'</p>')+'</section>';
 }
 function relatedList(items,demo,detailed=false) {
   if(!items.length)return '<p class="muted">관련 기사 없음</p>';
@@ -181,7 +184,8 @@ export function sectionData(a) {
     const body = same
       ? '<p><strong>' + esc(name ? '출처: ' + name : '출처를 밝히지 않은 문장') + '</strong></p><p class="muted">주장 문장 안에 출처가 함께 적혀 있어요.</p>'
       : '<blockquote>' + esc(m.article_quote) + kind + '</blockquote>' + translationLine(m) + (named ? '' : '<p>출처: ' + esc(name || '명시되지 않음') + '</p>');
-    return '<li class="evidence-item"'+anchor+'>' + body + '<button class="link-btn" data-quote="' + esc(m.article_quote) + '">본문에서 보기</button>' +
+    // 주장과 같은 문장이면 '본문에서 보기'는 위 주장에 이미 있으므로 다시 넣지 않는다
+    return '<li class="evidence-item"'+anchor+'>' + body + (same ? '' : '<button class="link-btn" data-quote="' + esc(m.article_quote) + '">본문에서 보기</button>') +
       sources.map(s => '<div id="evidence-source-'+esc(s.id)+'">'+sourceDetails(s,a.is_demo)+'</div>').join('') + '</li>';
   };
   const claimEvidence = c => a.evidence_mentions.filter(m => m.claim_ids.includes(c.id));
@@ -193,9 +197,15 @@ export function sectionData(a) {
   // 펼친 상태: 주장 1 → 근거들, 주장 2 → 근거들
   const claimDetails = a.claims.map((c,i) => {
     const items = claimEvidence(c);
+    // 근거가 따로 없어도 발언자 이름이 주장 문장 안에 실제로 있으면 그 발언자를 근거(출처)로 보여 준다 (AI가 짐작한 이름은 쓰지 않음)
+    const speakerInText = c.speaker && norm(c.original_text).includes(norm(c.speaker));
+    const speakerItem = !items.length && speakerInText ? '<li class="evidence-item"><p><strong>출처: ' + esc(c.speaker) + '</strong></p><p class="muted">주장 문장 안에 출처가 함께 적혀 있어요.</p></li>' : '';
+    // 근거에 같은 이름이 나오면 '발언자:' 줄은 생략해 같은 이름을 두 번 보여 주지 않는다
+    const shownInEvidence = speakerItem || (c.speaker && items.some(m => norm(sourceName(m)) === norm(c.speaker)));
+    const list = items.length ? items.map(evidenceItem).join('') : speakerItem;
     return '<li class="claim-block"><div class="claim-head"><span class="trace-badge claim-no">주장 ' + (i+1) + '</span>' + pill(TYPE_LABELS[c.claim_type]) + pill(SOURCE_LABELS[c.source_status]) + '</div>' +
-      '<blockquote>' + esc(c.original_text) + '</blockquote>' + translationLine(c) + '<p>발언자: ' + esc(c.speaker || '미확인') + '</p><button class="link-btn" data-quote="' + esc(c.original_text) + '">본문에서 보기</button>' +
-      '<h3 class="evidence-heading">근거</h3>' + (items.length ? '<ol class="evidence-list">' + items.map(evidenceItem).join('') + '</ol>' : '<p class="muted">기사에 이 주장의 근거가 따로 제시되지 않았어요.</p>') + '</li>';
+      '<blockquote>' + esc(c.original_text) + '</blockquote>' + translationLine(c) + (shownInEvidence ? '' : '<p>발언자: ' + esc(c.speaker || '미확인') + '</p>') + '<button class="link-btn" data-quote="' + esc(c.original_text) + '">본문에서 보기</button>' +
+      '<h3 class="evidence-heading">근거</h3>' + (list ? '<ol class="evidence-list">' + list + '</ol>' : '<p class="muted">기사에 이 주장의 근거가 따로 제시되지 않았어요.</p>') + '</li>';
   }).join('');
   const looseMentions = a.evidence_mentions.filter(m => !a.claims.some(c => m.claim_ids.includes(c.id)));
   const linked = new Set(a.evidence_mentions.flatMap(m => cited.filter(s => s.mention_ids.includes(m.id)).map(s => s.id)));
@@ -310,9 +320,10 @@ export function renderAnalysis(container, a, expanded = new Set()) {
     if(toggle){
       if(expanded.has('headline'))expanded.delete('headline');else expanded.add('headline');
       toggle.setAttribute('aria-expanded',String(expanded.has('headline')));
-      toggle.setAttribute('aria-label','제목의 의미와 이유 '+(expanded.has('headline')?'접기':'자세히 보기'));
+      toggle.setAttribute('aria-label','제목의 의미와 뒷받침하는 내용 '+(expanded.has('headline')?'접기':'자세히 보기'));
       toggle.textContent=expanded.has('headline')?'접기 ∧':'자세히 보기 ›';
       container.querySelector('#headline-details').hidden=!expanded.has('headline');
+      container.querySelector('#headline-summary').hidden=expanded.has('headline');
       return;
     }
     const jump=e.target.closest('[data-headline-jump]');
