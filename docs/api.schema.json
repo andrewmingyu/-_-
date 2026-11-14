@@ -1502,7 +1502,7 @@
         "type": "string"
       },
       "data_version": {
-        "default": "source-tracing-v1.10",
+        "default": "source-tracing-v1.12",
         "title": "Data Version",
         "type": "string"
       },
@@ -3234,7 +3234,7 @@
         "type": "string"
       },
       "data_version": {
-        "default": "source-tracing-v1.10",
+        "default": "source-tracing-v1.12",
         "title": "Data Version",
         "type": "string"
       },

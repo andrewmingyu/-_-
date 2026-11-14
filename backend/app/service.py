@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from .models import (Article, ArticleAnalysis, Claim, Decision, Extraction, Source, RelatedArticle,
                      SourceFacts, SourceReviews, AnalyzeRequest, RelatedVideo, SelectionAnalysis, TextSpan,
                      CautionDetail, ArticleContext, EventInfo, PipelineError, SectionState, ReportComparisons,
-                     HeadlineExplanation, Preview)
+                     HeadlineExplanation, Preview, Mention)
 from .prompts import EXTRACT, TRACE, COMPARE_REPORTS
 from .report_comparison import comparison_material, apply_comparisons
 from .errors import ProviderError
@@ -93,6 +93,120 @@ def date_in_quote(quote):
     # 같은 위치에서 시작하는 표현 중 가장 긴 것 (예: '9일'보다 '11월 9일(현지시간)')
     text = max((text for pos, text in found if pos == first), key=len)
     return text + '년' if re.fullmatch(r'(?:19|20)\d{2}', text) else text
+
+
+def timeline_date_key(date, published=None):
+    """배경 및 맥락 정렬용 날짜 값 (연, 월, 일). 화면 표기는 바꾸지 않고 순서를 정할 때만 쓴다.
+    '6일'·'지난 3월'처럼 연·월이 빠진 표현은 기사 작성일을 기준으로 채운다. 작성일보다 뒤의 날짜는 지난달·지난해로 보고,
+    '오는'이 붙은 앞으로의 날짜는 이번 달·올해(지났으면 다음 달·내년)로 본다. 날짜가 없으면('시점 미확인') 화면의 '(보도일)'과 같이 작성일을 쓴다.
+    알 수 없는 표현(예: '최근')은 None을 돌려줘 그 항목은 자리를 옮기지 않는다."""
+    text = re.sub(r'[(（]?\s*(현지|한국)\s*시[각간]\s*(기준)?\s*[)）]?', ' ', str(date or '')).strip()
+    pub = None
+    if published:
+        m = re.match(r'(\d{4})-(\d{2})-(\d{2})', str(published))
+        pub = tuple(int(x) for x in m.groups()) if m else None
+    if not text or text == '시점 미확인':
+        return pub
+    future = '오는' in text
+    months = {m: i + 1 for i, m in enumerate(['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'])}
+    m = re.search(r'(\d{4})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})', text)
+    if m:
+        return tuple(int(x) for x in m.groups())
+    m = re.search(r'\b([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2})(?:,\s*(\d{4}))?', text)
+    if m and m.group(1).lower() in months:
+        y = int(m.group(3)) if m.group(3) else (pub[0] if pub else None)
+        return (y, months[m.group(1).lower()], int(m.group(2))) if y else None
+    m = re.search(r'(\d{4})\s*년\s*(\d{1,2})\s*월', text)
+    if m:
+        return (int(m.group(1)), int(m.group(2)), 1)
+    m = re.search(r'(\d{1,2})\s*월\s*(\d{1,2})\s*일', text)
+    if m and pub:
+        mo, d = int(m.group(1)), int(m.group(2)); y = pub[0]
+        if not future and (mo, d) > pub[1:]: y -= 1
+        if future and (mo, d) < pub[1:]: y += 1
+        return (y, mo, d)
+    m = re.search(r'(\d{1,2})\s*월', text)
+    if m and pub:
+        mo = int(m.group(1)); y = pub[0]
+        if not future and mo > pub[1]: y -= 1
+        if future and mo < pub[1]: y += 1
+        return (y, mo, 1)
+    m = re.search(r'(?<![\d년월])(\d{1,2})\s*일', text)
+    if m and pub:
+        d = int(m.group(1)); y, mo = pub[0], pub[1]
+        if not future and d > pub[2]:
+            y, mo = (y, mo - 1) if mo > 1 else (y - 1, 12)
+        if future and d < pub[2]:
+            y, mo = (y, mo + 1) if mo < 12 else (y + 1, 1)
+        return (y, mo, d)
+    m = re.search(r'(?<!\d)((?:19|20)\d{2})(?!\d)', text)
+    if m:
+        return (int(m.group(1)), 1, 1)
+    return None
+
+
+def order_timeline(items, published=None):
+    """Gemini가 기사 서술 순서대로 돌려줘도 실제 일어난 순서로 다시 놓는다.
+    날짜를 알 수 없는 항목은 제자리에 두고, 날짜가 같으면 원래 순서를 유지한다."""
+    keys = [timeline_date_key(t.date, published) for t in items]
+    slots = [i for i, k in enumerate(keys) if k is not None]
+    ordered = sorted(slots, key=lambda i: (keys[i], i))
+    result = list(items)
+    for slot, src in zip(slots, ordered):
+        result[slot] = items[src]
+    return result
+
+
+def grounded_name(name, text):
+    """이름이 본문에 있으면 본문에 적힌 표기 그대로 돌려준다. 띄어쓰기만 다른 경우(예: '형사 1단독' ↔ '형사1단독')도 인정한다.
+    본문에 없는 이름(AI 추정)은 None."""
+    name = str(name or '').strip()
+    if not name:
+        return None
+    if name in text:
+        return name
+    compact = re.sub(r'\s+', '', name)
+    if len(compact) < 2:
+        return None
+    m = re.search(r'\s*'.join(map(re.escape, compact)), text)
+    return m.group(0) if m else None
+
+
+# 문장 끝이 이런 서술이면 문장 맨 앞의 주어가 그 내용을 말하거나 발표·판단한 주체다
+SPEAKER_VERBS = r'(?:밝혔|말했|전했|설명했|지적했|강조했|선고했|명령했|판결했|발표했|주장했|반박했|덧붙였|예고했|답했|비판했|언급했|경고했|당부했|요구했|촉구했|결정했|판단했|부인했|인정했|약속했|보도했|해명했|공지했|통보했)다'
+LEAD_WORDS = r'(?:특히|이에|또|또한|한편|아울러|이어|다만|앞서|이후|그러나|하지만|이와 관련해|이날|당시)'
+PRONOUNS = {'그', '그녀', '이들', '그들', '이', '해당', '본인'}
+
+
+def speaker_from_sentence(sentence):
+    """주장 문장이 'OO은/는 … 밝혔다·선고했다'처럼 끝나면 문장 맨 앞의 주어를 발언자로 돌려준다.
+    문장에 실제로 있는 글자만 쓰고, 수동형('조사됐다' 등)이나 대명사는 쓰지 않는다."""
+    sentence = str(sentence or '').strip()
+    if not re.search(SPEAKER_VERBS + r'[.”"\'’\s]*$', sentence):
+        return None
+    m = re.match(r'^(?:' + LEAD_WORDS + r'\s+)?(?:\d{1,2}일\s+)?([^\s"“”‘’\'(,][^"“”‘’\',]{0,38}?)(?:은|는)\s', sentence)
+    if not m:
+        return None
+    name = m.group(1).strip()
+    return None if name in PRONOUNS or len(name) < 2 else name
+
+
+PRESS_SUFFIX = re.compile(r'(뉴스|일보|신문|방송|통신|경제|타임스|저널|TV|tv)$')
+
+
+def attribution_before(text, quote):
+    """주장 문장 바로 앞(같은 문장 안)에 'OO에 따르면'이 있으면 (원문 구절, 출처 이름)을 돌려준다. 예: '14일 연합뉴스에 따르면'."""
+    start = text.find(quote)
+    if start <= 0:
+        return None
+    head = text[max(0, start - 60):start]
+    head = re.split(r'[.!?。\n]', head)[-1]
+    m = re.search(r'((?:\d{1,2}일\s+)?([가-힣A-Za-z0-9·&\s]{2,30}?))에\s*따르면\s*$', head)
+    if not m:
+        return None
+    phrase = head[m.start():].strip()
+    name = re.sub(r'^\d{1,2}일\s+', '', m.group(1)).strip()
+    return (phrase, name) if len(name) >= 2 and phrase in text else None
 
 
 def attribution_near(text, quote, label, window=200):
@@ -408,7 +522,7 @@ class Analyzer:
             metadata['url'] = normalize_url(request.url)
         return body_hash(json.dumps([normalize_url(request.url), body_hash(request.page_text),
             request.title, metadata, clean_context(request.article_context,request.page_text).model_dump(mode='json'),
-            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.10', focus], ensure_ascii=False))
+            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.12', focus], ensure_ascii=False))
 
     def lookup(self, article_id, url=None):
         url = normalize_url(url) if url is not None else None
@@ -469,7 +583,10 @@ class Analyzer:
             instruction += '\nselected_text에 해당하는 주장만 추출하라. 발언자와 기사 근거를 이해할 때 body의 주변 문맥을 참고하라.'
         extracted = await self.llm.generate(instruction, {'title': request.title, 'body': request.page_text, 'selected_text': focus,
             'article_context':request.article_context.model_dump(mode='json')}, Extraction)
-        return self.clean_extraction(extracted,request.page_text)
+        extracted = self.clean_extraction(extracted,request.page_text)
+        # 배경 및 맥락은 기사에 나온 순서가 아니라 일어난 순서로 보여 준다
+        extracted.context_timeline = order_timeline(extracted.context_timeline, request.metadata.published_at if request.metadata else None)
+        return extracted
 
     async def preview(self,request):
         if not request.page_text.strip():
@@ -1009,7 +1126,13 @@ class Analyzer:
             seen.add(c.id)
             c.claim_text = c.original_text
             c.translation = korean_translation(c.translation, c.original_text)
-            c.speaker = c.speaker if c.speaker and c.speaker in text else None
+            # 발언자: AI가 쓴 이름을 본문 표기로 맞추고, 비어 있으면 문장 맨 앞의 주어에서 찾는다 (본문에 없는 이름은 쓰지 않음)
+            given = c.speaker
+            c.speaker = grounded_name(given, text)
+            if given and not c.speaker:
+                logger.info('발언자 제거(본문에 없음): %s', given)
+            if not c.speaker:
+                c.speaker = speaker_from_sentence(c.original_text)
             c.source_ids, c.mention_ids, c.source_status = [], [], 'unknown'
             c.caution = Decision(reasons=['출처 분석 전입니다.'])
             c.article_span = text_span(text,c.original_text)
@@ -1028,6 +1151,18 @@ class Analyzer:
             m.anonymous = bool(re.search(r'익명|관계자|소식통', m.article_quote))
             m.article_span = text_span(text,m.article_quote)
             mentions.append(m)
+        # 주장 문장 바로 앞에 'OO에 따르면'이 있는데 근거로 뽑히지 않았으면 그 구절을 근거(출처)로 추가한다
+        for c in claims:
+            found = attribution_before(text, c.original_text)
+            if not found or any(c.id in m.claim_ids and found[0] in m.article_quote for m in mentions):
+                continue
+            phrase, name = found
+            same = next((m for m in mentions if m.article_quote == phrase), None)
+            if same:
+                same.claim_ids = list(dict.fromkeys([*same.claim_ids, c.id]))
+                continue
+            mentions.append(Mention(id='m_attr_' + c.id, claim_ids=[c.id], description=phrase, article_quote=phrase, source_label=name,
+                source_kind='news_report' if PRESS_SUFFIX.search(name) else 'unknown', article_span=text_span(text, phrase)))
         extracted.claims, extracted.evidence_mentions = claims, mentions
         extracted.context_timeline = [t.model_copy(update={'description':t.article_quote, 'article_span':text_span(text,t.article_quote),
             'date':t.date if grounded_date(t.date, t.article_quote) else (date_in_quote(t.article_quote) or '시점 미확인'),'source_ids':[]}) for t in extracted.context_timeline if t.article_quote and t.article_quote in text]

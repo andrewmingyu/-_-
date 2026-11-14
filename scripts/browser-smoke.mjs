@@ -49,7 +49,7 @@ try {
   await fs.mkdir('.tools',{recursive:true});
   await page.evaluate(()=>scrollTo(0,0));
   assert.equal(await page.locator('#content > :first-child').getAttribute('class'),'card headline-explanation');
-  assert.equal(await page.locator('.headline-reasons > li').count(),2);
+  assert.equal(await page.locator('#headline-summary > li').count(),2);
   assert.equal(await page.locator('#summary-context .context-main').count(),1);
   for(const label of await page.locator('#summary-context .context-step p').all()){
     assert.ok(!(await label.innerText()).includes('…'));

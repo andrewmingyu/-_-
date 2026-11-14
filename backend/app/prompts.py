@@ -12,14 +12,14 @@ event에는 핵심 사건의 description/article_quote/time/location을 넣되 �
 자료 종류는 official_release/public_record/research/statistics/interview/expert_comment/news_report/anonymous_statement/unknown으로 구분하라.
 기사 내 위치 article_span과 출처 ID, 주의사항 details, 타임라인 source_ids는 서버에서 채우므로 기본값으로 둬라.
 검토/예정/인용의 한정 표현을 보존하라. original_text, article_quote는 원문의 연속된 인용이어야 한다.
-claim_text도 원문 표현을 그대로 사용하라. speaker, source_label, document_title은 원문에 있는 문자열만 사용한다.
+claim_text도 원문 표현을 그대로 사용하라. speaker, source_label, document_title은 원문에 있는 문자열만 사용한다. speaker는 그 주장 내용을 말하거나 발표·판단·결정·보도한 주체(사람·기관)다. 따옴표 발언뿐 아니라 판결·발표·조사 결과 같은 사실 서술 문장도 문장 안에 주체가 있으면 채운다(예: '춘천지법 형사1단독 정종건 부장판사는 … 선고했다' → '춘천지법 형사1단독 정종건 부장판사'). 띄어쓰기까지 원문 그대로 복사하고, 문장에 주체가 없으면(예: '~것으로 조사됐다') 추정하지 말고 null로 둔다. 주장 문장 앞에 '○○에 따르면'처럼 출처가 붙어 있으면 그 구절을 evidence_mentions로 따로 추출하고 source_label에 ○○를 넣는다.
 기사 본문이 한국어가 아니면 claims[].translation에는 original_text의, evidence_mentions[].translation에는 article_quote의 자연스러운 한국어 번역을 넣는다. 의미를 더하거나 빼지 말고 검토·예정·인용·가능성·부정 등 한정 표현을 그대로 옮긴다. 본문이 한국어면 translation은 null로 둔다.
 익명 여부는 '익명', '관계자', '소식통' 등의 실제 표현에 근거한다.
 claims에는 source_ids를 넣지 말고 source_status와 caution은 기본값을 유지한다. claim_ids와 mention_ids를 연결한다.
 evidence_mentions는 기사 자체가 근거로 제시한 자료/발언만 담는다. URL을 생성하지 않는다.
 주장이 누군가의 인용 발언이면 근거는 그 발언 내용이 아니라 출처다. 이때 evidence_mentions.article_quote에는 주장과 같은 따옴표 문장을 반복하지 말고, 발언자나 자료를 밝힌 원문 부분(예: '…라고 김OO 교수는 말했다', '…라고 관계자는 전했다', 'says Prof X from Y', 'according to Z')을 연속 인용으로 넣고 source_label에는 그 부분의 발언자·기관명을 그대로 넣는다. 출처를 밝힌 부분이 따로 없으면 주장과 같은 문장으로 근거를 만들지 않는다.
 headline_difference는 제목과 본문의 표현 차이만 기술한다. 사실 여부나 점수는 쓰지 않는다.
-context_timeline은 기사에서 명시적으로 확인되는 배경·주요 사건·이후 맥락을 시간순으로 1~4개 고르되 없으면 빈 목록으로 둔다. description과 article_quote는 원문 그대로 사용하고 date는 해당 인용에 나온 시점만 사용한다. 시점이 없으면 시점 미확인으로 적는다. date는 해당 인용 안에 적힌 날짜 표현을 그대로 옮긴다(예: '8일(현지시간)', '9일'). 원문에 없는 연도·월을 덧붙이지 않는다. 기사가 외국어면 숫자는 원문과 같게 한국어로 쓴다(예: 'in 2007' → '2007년', 'March 12' → '3월 12일'). 원문에 없는 날짜를 계산하거나 추정하지 않는다.
+context_timeline은 기사에서 명시적으로 확인되는 배경·주요 사건·이후 맥락을 시간순으로 1~4개 고르되 없으면 빈 목록으로 둔다. 순서는 기사에 서술된 순서가 아니라 실제로 일어난 순서(오래된 일 → 최근 일 → 예정된 일)다. 뉴스는 최신 사건을 먼저 쓰고 배경을 뒤에 쓰는 경우가 많으니, '앞서', '지난', '당시', '이전에' 같은 표현이나 데뷔·과거 경력·이전 사건은 주요 사건보다 앞에 둔다. description과 article_quote는 원문 그대로 사용하고 date는 해당 인용에 나온 시점만 사용한다. 시점이 없으면 시점 미확인으로 적는다. date는 해당 인용 안에 적힌 날짜 표현을 그대로 옮긴다(예: '8일(현지시간)', '9일'). 원문에 없는 연도·월을 덧붙이지 않는다. 기사가 외국어면 숫자는 원문과 같게 한국어로 쓴다(예: 'in 2007' → '2007년', 'March 12' → '3월 12일'). 원문에 없는 날짜를 계산하거나 추정하지 않는다.
 각 timeline.label과 event.label은 '이메일로 외도 인정', '지원제도 개편 검토'처럼 6~16자 정도(최대 24자)의 짧은 명사형 표현으로 작성한다. 날짜는 label에 넣지 않는다. '~했다'라는 긴 문장이나 말줄임표를 사용하지 않는다. 검토·의혹·예정 등 중요한 한정 표현은 label에도 남긴다.
 타임라인 중 기사의 핵심 사건 하나만 is_main_event=true로 표시하고 해당 article_quote는 event.article_quote와 같은 원문 범위로 선택한다. 나머지는 그 사건 전후의 맥락으로 구성한다. 기사 밖 배경이나 사건 사이의 인과관계를 추가하지 않는다.'''
 
