@@ -94,6 +94,68 @@ def date_in_quote(quote):
     return text + '년' if re.fullmatch(r'(?:19|20)\d{2}', text) else text
 
 
+def timeline_date_key(date, published=None):
+    """배경 및 맥락 정렬용 날짜 값 (연, 월, 일). 화면 표기는 바꾸지 않고 순서를 정할 때만 쓴다.
+    '6일'·'지난 3월'처럼 연·월이 빠진 표현은 기사 작성일을 기준으로 채운다. 작성일보다 뒤의 날짜는 지난달·지난해로 보고,
+    '오는'이 붙은 앞으로의 날짜는 이번 달·올해(지났으면 다음 달·내년)로 본다. 날짜가 없으면('시점 미확인') 화면의 '(보도일)'과 같이 작성일을 쓴다.
+    알 수 없는 표현(예: '최근')은 None을 돌려줘 그 항목은 자리를 옮기지 않는다."""
+    text = re.sub(r'[(（]?\s*(현지|한국)\s*시[각간]\s*(기준)?\s*[)）]?', ' ', str(date or '')).strip()
+    pub = None
+    if published:
+        m = re.match(r'(\d{4})-(\d{2})-(\d{2})', str(published))
+        pub = tuple(int(x) for x in m.groups()) if m else None
+    if not text or text == '시점 미확인':
+        return pub
+    future = '오는' in text
+    months = {m: i + 1 for i, m in enumerate(['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'])}
+    m = re.search(r'(\d{4})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})', text)
+    if m:
+        return tuple(int(x) for x in m.groups())
+    m = re.search(r'\b([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2})(?:,\s*(\d{4}))?', text)
+    if m and m.group(1).lower() in months:
+        y = int(m.group(3)) if m.group(3) else (pub[0] if pub else None)
+        return (y, months[m.group(1).lower()], int(m.group(2))) if y else None
+    m = re.search(r'(\d{4})\s*년\s*(\d{1,2})\s*월', text)
+    if m:
+        return (int(m.group(1)), int(m.group(2)), 1)
+    m = re.search(r'(\d{1,2})\s*월\s*(\d{1,2})\s*일', text)
+    if m and pub:
+        mo, d = int(m.group(1)), int(m.group(2)); y = pub[0]
+        if not future and (mo, d) > pub[1:]: y -= 1
+        if future and (mo, d) < pub[1:]: y += 1
+        return (y, mo, d)
+    m = re.search(r'(\d{1,2})\s*월', text)
+    if m and pub:
+        mo = int(m.group(1)); y = pub[0]
+        if not future and mo > pub[1]: y -= 1
+        if future and mo < pub[1]: y += 1
+        return (y, mo, 1)
+    m = re.search(r'(?<![\d년월])(\d{1,2})\s*일', text)
+    if m and pub:
+        d = int(m.group(1)); y, mo = pub[0], pub[1]
+        if not future and d > pub[2]:
+            y, mo = (y, mo - 1) if mo > 1 else (y - 1, 12)
+        if future and d < pub[2]:
+            y, mo = (y, mo + 1) if mo < 12 else (y + 1, 1)
+        return (y, mo, d)
+    m = re.search(r'(?<!\d)((?:19|20)\d{2})(?!\d)', text)
+    if m:
+        return (int(m.group(1)), 1, 1)
+    return None
+
+
+def order_timeline(items, published=None):
+    """Gemini가 기사 서술 순서대로 돌려줘도 실제 일어난 순서로 다시 놓는다.
+    날짜를 알 수 없는 항목은 제자리에 두고, 날짜가 같으면 원래 순서를 유지한다."""
+    keys = [timeline_date_key(t.date, published) for t in items]
+    slots = [i for i, k in enumerate(keys) if k is not None]
+    ordered = sorted(slots, key=lambda i: (keys[i], i))
+    result = list(items)
+    for slot, src in zip(slots, ordered):
+        result[slot] = items[src]
+    return result
+
+
 def attribution_near(text, quote, label, window=200):
     """출처 이름이 근거 인용 안에 있거나, 인용 바로 앞뒤(같은 문장 범위)에 있으면 인정한다.
     영어 기사처럼 '"…," says Prof X'로 발언자가 인용 뒤에 붙는 경우를 위해서다."""
@@ -370,7 +432,7 @@ class Analyzer:
             metadata['url'] = normalize_url(request.url)
         return body_hash(json.dumps([normalize_url(request.url), body_hash(request.page_text),
             request.title, metadata, clean_context(request.article_context,request.page_text).model_dump(mode='json'),
-            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.10', focus], ensure_ascii=False))
+            self.mode, os.getenv('LLM_MODEL'), 'source-tracing-v1.11', focus], ensure_ascii=False))
 
     def lookup(self, article_id, url=None):
         url = normalize_url(url) if url is not None else None
@@ -431,7 +493,10 @@ class Analyzer:
             instruction += '\nselected_text에 해당하는 주장만 추출하라. 발언자와 기사 근거를 이해할 때 body의 주변 문맥을 참고하라.'
         extracted = await self.llm.generate(instruction, {'title': request.title, 'body': request.page_text, 'selected_text': focus,
             'article_context':request.article_context.model_dump(mode='json')}, Extraction)
-        return self.clean_extraction(extracted,request.page_text)
+        extracted = self.clean_extraction(extracted,request.page_text)
+        # 배경 및 맥락은 기사에 나온 순서가 아니라 일어난 순서로 보여 준다
+        extracted.context_timeline = order_timeline(extracted.context_timeline, request.metadata.published_at if request.metadata else None)
+        return extracted
 
     async def preview(self,request):
         if not request.page_text.strip():
